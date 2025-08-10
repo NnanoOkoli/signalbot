@@ -1,0 +1,7 @@
+# Telegram Bot Configuration
+# Copy this file to .env and add your actual bot token
+
+BOT_TOKEN=your_telegram_bot_token_here
+
+# Optional Settings
+LOG_LEVEL=INFO

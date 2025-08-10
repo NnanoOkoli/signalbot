@@ -1,0 +1,33 @@
+# Boni AI Configuration
+
+# Application settings
+app:
+  name: "Boni AI"
+  version: "0.1.0"
+  debug: false
+
+# AI Model settings
+ai:
+  model_type: "transformer"
+  model_path: "models/"
+  max_tokens: 2048
+  temperature: 0.7
+
+# Logging settings
+logging:
+  level: "INFO"
+  file_path: "logs/"
+  max_size: "10MB"
+  backup_count: 5
+
+# API settings
+api:
+  host: "localhost"
+  port: 8000
+  timeout: 30
+
+# Database settings
+database:
+  type: "sqlite"
+  path: "data/boni_ai.db"
+  backup_enabled: true
