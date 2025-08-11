@@ -52,8 +52,8 @@ SNIPER_TF = "5s"    # Sniper Timeframe (precise entries)
 
 # Signal Settings
 CANDLES_N = 200                    # History length per timeframe
-POLL_INTERVAL = 0.5                # Seconds between polls for new candles (faster)
-SIGNAL_DEBOUNCE = 60 * 2           # 2 minutes between same pair signals (more frequent)
+POLL_INTERVAL = 0.1                # Seconds between polls for new candles (10x faster)
+SIGNAL_DEBOUNCE = 20               # 20 seconds between same pair signals (3 per minute possible)
 
 # Technical Indicator Parameters
 RSI_PERIOD = 14                    # RSI calculation period
@@ -84,9 +84,9 @@ ATR_LEN = 10                       # ATR length for volatility
 KC_MULT = 1.5                      # ATR multiplier for upper/lower bands
 
 # Signal Generation Thresholds
-MIN_SIGNAL_SCORE = 70              # Minimum score to generate signal
-TREND_STRENGTH_THRESHOLD = 0.6     # Minimum trend strength required
-VOLATILITY_THRESHOLD = 0.002       # Minimum price movement required
+MIN_SIGNAL_SCORE = 50              # Lower threshold for more frequent signals
+TREND_STRENGTH_THRESHOLD = 0.4     # Lower trend strength required
+VOLATILITY_THRESHOLD = 0.001       # Lower price movement required
 
 # ========== HOW TO SETUP ==========
 # 1. Create a Telegram bot with @BotFather

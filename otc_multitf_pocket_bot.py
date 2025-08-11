@@ -589,10 +589,10 @@ def compute_score(pair: str, df_htf: pd.DataFrame, df_mtf: pd.DataFrame, df_ltf:
             score += 5
             reasons.append("Volatility: High volatility favorable")
     
-    # Determine signal direction
-    if score >= 80:
+    # Determine signal direction (lower thresholds for more frequent signals)
+    if score >= 50:
         signal = "buy"
-    elif score <= -80:
+    elif score <= -50:
         signal = "sell"
     else:
         signal = "none"
@@ -826,30 +826,63 @@ async def pair_worker(pair: str):
                 reasons = sniper_reasons + reasons[:5]  # Combine sniper reasons with top traditional reasons
                 score = min(100, score + 15)  # Boost score for sniper entries
             
+            # High-frequency signal generation - allow multiple signal types
+            signals_to_send = []
+            
+            # Main signal
+            if side != "none":
+                signals_to_send.append(("main", side, score, reasons))
+            
+            # Sniper entry signal (if different from main)
+            if sniper_side != "none" and sniper_side != side:
+                signals_to_send.append(("sniper", sniper_side, 85, sniper_reasons))
+            
+            # Momentum signal (quick entry/exit)
+            if not df_5s.empty and len(df_5s) >= 6:
+                current_5s = df_5s.iloc[-1]
+                prev_5s = df_5s.iloc[-2] if len(df_5s) > 1 else current_5s
+                
+                # Quick momentum signal
+                if current_5s["close"] > prev_5s["close"] * 1.0001:  # 0.01% move
+                    momentum_score = 60
+                    if momentum_score >= 50:
+                        signals_to_send.append(("momentum", "buy", momentum_score, ["5s: Quick momentum up"]))
+                elif current_5s["close"] < prev_5s["close"] * 0.9999:  # 0.01% move
+                    momentum_score = -60
+                    if momentum_score <= -50:
+                        signals_to_send.append(("momentum", "sell", momentum_score, ["5s: Quick momentum down"]))
+            
             now = time.time()
-            if side != "none" and (now - last_signal_ts[pair]) > SIGNAL_DEBOUNCE:
-                # Build simple, visual signal message
-                current_time = pd.Timestamp.now().strftime('%H:%M:%S')
-                
-                if side == "buy":
-                    # Green BUY signal with teddy bear
-                    txt = f"🟢 <b>BUY {pair}</b> 🧸\n"
-                    txt += f"⏰ {current_time}\n"
-                    txt += f"💰 {side.upper()}"
-                else:
-                    # Red SELL signal with teddy bear
-                    txt = f"🔴 <b>SELL {pair}</b> 🧸\n"
-                    txt += f"⏰ {current_time}\n"
-                    txt += f"💰 {side.upper()}"
-                
-                # Add sniper entry info if detected
-                is_sniper = sniper_side != "none" and sniper_side == side
-                if is_sniper:
-                    txt += f" 🎯"
-                
-                await send_telegram(txt)
-                last_signal_ts[pair] = now
-                logger.info("Sent comprehensive signal %s %s (score=%d)", pair, side, score)
+            
+            # Send all signals that meet timing requirements
+            for signal_type, signal_side, signal_score, signal_reasons in signals_to_send:
+                # Check if enough time has passed for this signal type
+                time_key = f"{pair}_{signal_type}"
+                if (now - last_signal_ts.get(time_key, 0)) > SIGNAL_DEBOUNCE:
+                    
+                    # Build simple, visual signal message
+                    current_time = pd.Timestamp.now().strftime('%H:%M:%S')
+                    
+                    if signal_side == "buy":
+                        # Green BUY signal with teddy bear
+                        txt = f"🟢 <b>BUY {pair}</b> 🧸\n"
+                        txt += f"⏰ {current_time}\n"
+                        txt += f"💰 {signal_side.upper()}"
+                    else:
+                        # Red SELL signal with teddy bear
+                        txt = f"🔴 <b>SELL {pair}</b> 🧸\n"
+                        txt += f"⏰ {current_time}\n"
+                        txt += f"💰 {signal_side.upper()}"
+                    
+                    # Add signal type indicators
+                    if signal_type == "sniper":
+                        txt += f" 🎯"
+                    elif signal_type == "momentum":
+                        txt += f" ⚡"
+                    
+                    await send_telegram(txt)
+                    last_signal_ts[time_key] = now
+                    logger.info("Sent %s signal %s %s (score=%d)", signal_type, pair, signal_side, signal_score)
             
             await asyncio.sleep(POLL_INTERVAL)
             
