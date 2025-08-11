@@ -931,13 +931,37 @@ async def pair_worker(pair: str):
             if sniper_side != "none" and sniper_side == side and score >= 90:
                 signals_to_send.append(("sniper", sniper_side, 95, sniper_reasons))
             
+            # Quick momentum signals (faster frequency, lower threshold)
+            if not df_5s.empty and len(df_5s) >= 6:
+                current_5s = df_5s.iloc[-1]
+                prev_5s = df_5s.iloc[-2] if len(df_5s) > 1 else current_5s
+                
+                # Quick momentum signal with lower threshold for more frequent alerts
+                if current_5s["close"] > prev_5s["close"] * 1.0002:  # 0.02% move (higher threshold)
+                    momentum_score = 75
+                    if momentum_score >= 70:  # Lower threshold for momentum signals
+                        signals_to_send.append(("momentum", "buy", momentum_score, ["5s: Quick momentum up (0.02%)"]))
+                elif current_5s["close"] < prev_5s["close"] * 0.9998:  # 0.02% move (higher threshold)
+                    momentum_score = -75
+                    if momentum_score <= -70:  # Lower threshold for momentum signals
+                        signals_to_send.append(("momentum", "sell", momentum_score, ["5s: Quick momentum down (0.02%)"]))
+            
             now = time.time()
             
             # Send all signals that meet timing requirements
             for signal_type, signal_side, signal_score, signal_reasons in signals_to_send:
                 # Check if enough time has passed for this signal type
                 time_key = f"{pair}_{signal_type}"
-                if (now - last_signal_ts.get(time_key, 0)) > SIGNAL_DEBOUNCE:
+                
+                # Different debounce times for different signal types
+                if signal_type == "momentum":
+                    debounce_time = 60  # 1 minute for momentum signals (faster)
+                elif signal_type == "sniper":
+                    debounce_time = 180  # 3 minutes for sniper signals (medium)
+                else:  # main signal
+                    debounce_time = SIGNAL_DEBOUNCE  # 2 minutes for main signals
+                
+                if (now - last_signal_ts.get(time_key, 0)) > debounce_time:
                     
                     # Build high-accuracy signal message with risk management
                     current_time = pd.Timestamp.now().strftime('%H:%M:%S')
@@ -946,25 +970,47 @@ async def pair_worker(pair: str):
                     position_size = calculate_position_size(win_rate, current_balance)
                     risk_amount = current_balance * position_size
                     
+                    # Calculate trade time limit based on signal type
+                    if signal_type == "momentum":
+                        trade_time_limit = "1-2 minutes"
+                        trade_direction = "↗️" if signal_side == "buy" else "↘️"
+                    elif signal_type == "sniper":
+                        trade_time_limit = "2-3 minutes"
+                        trade_direction = "🎯↗️" if signal_side == "buy" else "🎯↘️"
+                    else:  # main signal
+                        trade_time_limit = "3-5 minutes"
+                        trade_direction = "🚀↗️" if signal_side == "buy" else "🚀↘️"
+                    
                     if signal_side == "buy":
-                        # Green BUY signal with teddy bear
-                        txt = f"🟢 <b>BUY {pair}</b> 🧸\n"
-                        txt += f"⏰ {current_time}\n"
-                        txt += f"💰 {signal_side.upper()}"
+                        # Green BUY signal with teddy bear and direction arrow
+                        txt = f"🟢 <b>BUY {pair}</b> 🧸 {trade_direction}\n"
+                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
+                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
                     else:
-                        # Red SELL signal with teddy bear
-                        txt = f"🔴 <b>SELL {pair}</b> 🧸\n"
-                        txt += f"⏰ {current_time}\n"
-                        txt += f"💰 {signal_side.upper()}"
+                        # Red SELL signal with teddy bear and direction arrow
+                        txt = f"🔴 <b>SELL {pair}</b> 🧸 {trade_direction}\n"
+                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
+                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
                     
                     # Add accuracy and risk management info
                     txt += f"\n🎯 <b>Accuracy:</b> {win_rate:.1%}\n"
-                    txt += f"📊 <b>Position Size:</b> {position_size:.1%} (${risk_amount:.0f})\n"
+                    txt += f"📊 <b>Position Size:</b> {position_size:.1%}\n"
                     txt += f"📈 <b>Total Trades:</b> {total_trades} | <b>Wins:</b> {winning_trades}"
                     
                     # Add signal type indicators
                     if signal_type == "sniper":
                         txt += f" 🎯"
+                    
+                    # Add visual trade summary box
+                    txt += f"\n\n📋 <b>TRADE SUMMARY</b>"
+                    txt += f"\n{'─' * 20}"
+                    txt += f"\n🎯 <b>Type:</b> {signal_type.upper()} Signal"
+                    txt += f"\n📈 <b>Direction:</b> {trade_direction} {signal_side.upper()}"
+                    txt += f"\n⏱️ <b>Hold Time:</b> {trade_time_limit}"
+                    txt += f"\n💰 <b>Risk Amount:</b> ${risk_amount:.0f}"
+                    txt += f"\n🎲 <b>Win Rate:</b> {win_rate:.1%}"
                     
                     await send_telegram(txt)
                     last_signal_ts[time_key] = now
@@ -988,11 +1034,12 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🧸 <b>High-Accuracy OTC Signal Bot Started</b> 🧸
+🧸 <b>Visual High-Accuracy OTC Signal Bot Started</b> 🧸
 
 🎯 <b>Target: 98%+ Win Rate</b>
-⚡ <b>Signal Frequency: Quality over Quantity</b>
+⚡ <b>Signal Frequency: Balanced Speed (Main: 2min, Momentum: 1min)</b>
 📊 <b>Risk Management: Kelly Criterion Position Sizing</b>
+🔄 <b>Visual Features: Trade Direction Arrows + Time Limits</b>
 ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
     """

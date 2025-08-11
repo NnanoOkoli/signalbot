@@ -52,8 +52,8 @@ SNIPER_TF = "5s"    # Sniper Timeframe (precise entries)
 
 # Signal Settings
 CANDLES_N = 200                    # History length per timeframe
-POLL_INTERVAL = 1.0                # Seconds between polls (slower for accuracy)
-SIGNAL_DEBOUNCE = 300              # 5 minutes between same pair signals (quality over quantity)
+POLL_INTERVAL = 0.5                # Seconds between polls (balanced speed)
+SIGNAL_DEBOUNCE = 120              # 2 minutes between same pair signals (faster than 5min, slower than 20s)
 
 # Technical Indicator Parameters
 RSI_PERIOD = 14                    # RSI calculation period
