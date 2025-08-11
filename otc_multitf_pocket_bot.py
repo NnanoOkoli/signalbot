@@ -347,24 +347,28 @@ async def initialize_pocket_api():
     global pocket_api
     
     try:
-        # Create Pocket Option API instance
-        pocket_api = PocketOptionAPI(type('Config', (), {
-            'POCKET_OPTION_EMAIL': POCKET_OPTION_EMAIL,
-            'POCKET_OPTION_PASSWORD': POCKET_OPTION_PASSWORD
-        })())
+        # For now, skip real API connection to get bot working immediately
+        logger.info("Skipping Pocket Option API connection - using stub data for immediate testing")
+        return False
         
-        # Authenticate
-        if pocket_api.authenticate():
-            logger.info("Successfully authenticated with Pocket Option")
+        # Create Pocket Option API instance
+        # pocket_api = PocketOptionAPI(type('Config', (), {
+        #     'POCKET_OPTION_EMAIL': POCKET_OPTION_EMAIL,
+        #     'POCKET_OPTION_PASSWORD': POCKET_OPTION_PASSWORD
+        # })())
+        
+        # # Authenticate
+        # if pocket_api.authenticate():
+        #     logger.info("Successfully authenticated with Pocket Option")
             
-            # Connect WebSocket for real-time data
-            pocket_api.connect_websocket()
-            await asyncio.sleep(2)  # Wait for connection
+        #     # Connect WebSocket for real-time data
+        #     pocket_api.connect_websocket()
+        #     await asyncio.sleep(2)  # Wait for connection
             
-            return True
-        else:
-            logger.error("Failed to authenticate with Pocket Option")
-            return False
+        #     return True
+        # else:
+        #     logger.error("Failed to authenticate with Pocket Option")
+        #     return False
             
     except Exception as e:
         logger.exception("Error initializing Pocket Option API: %s", e)
