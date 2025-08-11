@@ -1,65 +1,68 @@
-import os
-from dotenv import load_dotenv
+# ========== MULTI-TIMEFRAME OTC SIGNAL BOT CONFIGURATION ==========
+# Copy this file to config.py and fill in your actual values
 
-load_dotenv()
+# Telegram Bot Configuration
+TELEGRAM_TOKEN = "8252758490:AAE2u3DwM_xYqCXnkllKmxyw7k6_LI0zcoo"
+TELEGRAM_CHAT_ID = "YOUR_ACTUAL_CHAT_ID_HERE"  # Your user ID or group ID
 
-class Config:
-    # Pocket Option API Configuration
-    POCKET_OPTION_EMAIL = os.getenv('POCKET_OPTION_EMAIL', '')
-    POCKET_OPTION_PASSWORD = os.getenv('POCKET_OPTION_PASSWORD', '')
-    
-    # Trading Parameters
-    DEFAULT_INVESTMENT = float(os.getenv('DEFAULT_INVESTMENT', '10'))  # USD
-    MAX_INVESTMENT = float(os.getenv('MAX_INVESTMENT', '100'))  # USD
-    MIN_INVESTMENT = float(os.getenv('MIN_INVESTMENT', '1'))  # USD
-    
-    # Risk Management
-    MAX_DAILY_LOSS = float(os.getenv('MAX_DAILY_LOSS', '50'))  # USD
-    MAX_DAILY_TRADES = int(os.getenv('MAX_DAILY_TRADES', '20'))
-    STOP_LOSS_PERCENTAGE = float(os.getenv('STOP_LOSS_PERCENTAGE', '5'))  # 5%
-    
-    # Signal Parameters
-    EXPIRY_TIME = int(os.getenv('EXPIRY_TIME', '5'))  # minutes
-    SIGNAL_CONFIDENCE_THRESHOLD = float(os.getenv('SIGNAL_CONFIDENCE_THRESHOLD', '0.7'))  # 70%
-    
-    # Technical Indicators
-    RSI_PERIOD = int(os.getenv('RSI_PERIOD', '14'))
-    RSI_OVERBOUGHT = int(os.getenv('RSI_OVERBOUGHT', '70'))
-    RSI_OVERSOLD = int(os.getenv('RSI_OVERSOLD', '30'))
-    
-    MACD_FAST = int(os.getenv('MACD_FAST', '12'))
-    MACD_SLOW = int(os.getenv('MACD_SLOW', '26'))
-    MACD_SIGNAL = int(os.getenv('MACD_SIGNAL', '9'))
-    
-    BOLLINGER_PERIOD = int(os.getenv('BOLLINGER_PERIOD', '20'))
-    BOLLINGER_STD = float(os.getenv('BOLLINGER_STD', '2.0'))
-    
-    # OTC Specific Settings
-    OTC_ANALYSIS_PERIOD = int(os.getenv('OTC_ANALYSIS_PERIOD', '100'))  # candles
-    TREND_STRENGTH_THRESHOLD = float(os.getenv('TREND_STRENGTH_THRESHOLD', '0.6'))
-    
-    # Time Settings
-    MARKET_OPEN_HOUR = int(os.getenv('MARKET_OPEN_HOUR', '0'))  # UTC
-    MARKET_CLOSE_HOUR = int(os.getenv('MARKET_CLOSE_HOUR', '23'))  # UTC
-    
-    # Logging
-    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-    LOG_FILE = os.getenv('LOG_FILE', 'signal_bot.log')
-    
-    # Assets to trade
-    TRADING_ASSETS = [
-        'EUR/USD', 'GBP/USD', 'USD/JPY', 'USD/CHF',
-        'AUD/USD', 'USD/CAD', 'NZD/USD', 'EUR/GBP',
-        'EUR/JPY', 'GBP/JPY', 'CHF/JPY', 'AUD/JPY'
-    ]
-    
-    # Signal Types
-    SIGNAL_TYPES = {
-        'STRONG_BUY': 0.9,
-        'BUY': 0.7,
-        'WEAK_BUY': 0.6,
-        'NEUTRAL': 0.5,
-        'WEAK_SELL': 0.4,
-        'SELL': 0.3,
-        'STRONG_SELL': 0.1
-    }
+# Pocket Option API Configuration
+POCKET_OPTION_EMAIL = "gripcake@gmail.com"  # Replace with your Pocket Option email
+POCKET_OPTION_PASSWORD = "Franklin5"        # Replace with your Pocket Option password
+POCKET_OPTION_DEMO = True                       # Set to False for real account
+
+# Trading Pairs to Monitor
+PAIRS = [
+    "EURUSD-OTC",    # Replace with actual Pocket Option pair names
+    "USDJPY-OTC",    # Replace with actual Pocket Option pair names
+    "GBPUSD-OTC",    # Add more pairs as needed
+]
+
+# Timeframe Definitions (in seconds)
+TF_DEFS = {
+    "30s": 30,      # 30 seconds
+    "1m": 60,       # 1 minute
+    "3m": 180,      # 3 minutes
+    "5m": 300,      # 5 minutes
+}
+
+# Which Timeframes to Use for Decision Making
+HTF = "5m"          # High Timeframe (trend direction)
+MTF = "1m"          # Medium Timeframe (main analysis)
+LTF = "30s"         # Low Timeframe (entry refinement)
+
+# Signal Settings
+CANDLES_N = 200                    # History length per timeframe
+POLL_INTERVAL = 1.0                # Seconds between polls for new candles
+SIGNAL_DEBOUNCE = 60 * 3           # 3 minutes between same pair signals
+
+# Breakout Detection Parameters
+HTF_RANGE_BARS = 20                # Bars to look back for range calculation
+BREAKOUT_BODY_RATIO = 0.35         # Minimum body % of candle range required
+
+# Keltner Channel Parameters
+EMA_LEN = 20                       # EMA length for center line
+ATR_LEN = 10                       # ATR length for volatility
+KC_MULT = 1.5                      # ATR multiplier for upper/lower bands
+
+# ========== HOW TO SETUP ==========
+# 1. Create a Telegram bot with @BotFather
+# 2. Get your bot token
+# 3. Get your chat ID (send a message to @userinfobot)
+# 4. Replace the placeholder values above
+# 5. Save as config.py
+# 6. Run: python otc_multitf_bot.py
+
+# ========== EXAMPLE VALUES ==========
+# TELEGRAM_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+# TELEGRAM_CHAT_ID = "123456789"
+# PAIRS = ["EURUSD-OTC", "GBPUSD-OTC", "USDJPY-OTC"]
+
+# ========== ADVANCED FEATURES ==========
+# This bot includes:
+# - Multi-timeframe analysis (30s, 1m, 3m, 5m)
+# - Fair Value Gap (FVG) detection
+# - Swing Support/Resistance zone clustering
+# - Breakout detection with body ratio validation
+# - Advanced scoring system combining multiple factors
+# - Asynchronous architecture for better performance
+# - Automatic FVG expiration and filling detection
