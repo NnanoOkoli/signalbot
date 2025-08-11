@@ -968,50 +968,32 @@ async def pair_worker(pair: str):
                     
                     # Calculate position size based on win rate
                     position_size = calculate_position_size(win_rate, current_balance)
+                    
+                    # Build consolidated signal message
                     risk_amount = current_balance * position_size
                     
                     # Calculate trade time limit based on signal type
                     if signal_type == "momentum":
-                        trade_time_limit = "1-2 minutes"
+                        trade_time_limit = "1-2 min"
                         trade_direction = "↗️" if signal_side == "buy" else "↘️"
                     elif signal_type == "sniper":
-                        trade_time_limit = "2-3 minutes"
+                        trade_time_limit = "2-3 min"
                         trade_direction = "🎯↗️" if signal_side == "buy" else "🎯↘️"
                     else:  # main signal
-                        trade_time_limit = "3-5 minutes"
+                        trade_time_limit = "3-5 min"
                         trade_direction = "🚀↗️" if signal_side == "buy" else "🚀↘️"
-                    
+                        
                     if signal_side == "buy":
-                        # Green BUY signal with teddy bear and direction arrow
-                        txt = f"🟢 <b>BUY {pair}</b> 🧸 {trade_direction}\n"
-                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
-                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
-                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
+                        # Consolidated BUY signal
+                        txt = f"🟢 <b>{pair}</b> {trade_direction}\n"
+                        txt += f"⏱️ {trade_time_limit} | 💰 ${risk_amount:.0f}\n"
+                        txt += f"🎯 {win_rate:.1%} | 📊 {signal_type.upper()}"
                     else:
-                        # Red SELL signal with teddy bear and direction arrow
-                        txt = f"🔴 <b>SELL {pair}</b> 🧸 {trade_direction}\n"
-                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
-                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
-                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
-                    
-                    # Add accuracy and risk management info
-                    txt += f"\n🎯 <b>Accuracy:</b> {win_rate:.1%}\n"
-                    txt += f"📊 <b>Position Size:</b> {position_size:.1%}\n"
-                    txt += f"📈 <b>Total Trades:</b> {total_trades} | <b>Wins:</b> {winning_trades}"
-                    
-                    # Add signal type indicators
-                    if signal_type == "sniper":
-                        txt += f" 🎯"
-                    
-                    # Add visual trade summary box
-                    txt += f"\n\n📋 <b>TRADE SUMMARY</b>"
-                    txt += f"\n{'─' * 20}"
-                    txt += f"\n🎯 <b>Type:</b> {signal_type.upper()} Signal"
-                    txt += f"\n📈 <b>Direction:</b> {trade_direction} {signal_side.upper()}"
-                    txt += f"\n⏱️ <b>Hold Time:</b> {trade_time_limit}"
-                    txt += f"\n💰 <b>Risk Amount:</b> ${risk_amount:.0f}"
-                    txt += f"\n🎲 <b>Win Rate:</b> {win_rate:.1%}"
-                    
+                        # Consolidated SELL signal
+                        txt = f"🔴 <b>{pair}</b> {trade_direction}\n"
+                        txt += f"⏱️ {trade_time_limit} | 💰 ${risk_amount:.0f}\n"
+                        txt += f"🎯 {win_rate:.1%} | 📊 {signal_type.upper()}"
+                        
                     await send_telegram(txt)
                     last_signal_ts[time_key] = now
                     logger.info("Sent %s signal %s %s (score=%d, win_rate=%.1f%%)", 
@@ -1034,15 +1016,14 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🧸 <b>Visual High-Accuracy OTC Signal Bot Started</b> 🧸
+🧸 <b>Consolidated High-Accuracy OTC Signal Bot Started</b> 🧸
 
 🎯 <b>Target: 98%+ Win Rate</b>
-⚡ <b>Signal Frequency: Balanced Speed (Main: 2min, Momentum: 1min)</b>
+⚡ <b>Signal Format: Consolidated & Specific</b>
 📊 <b>Risk Management: Kelly Criterion Position Sizing</b>
-🔄 <b>Visual Features: Trade Direction Arrows + Time Limits</b>
 ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
-    """
+"""
     
     await send_telegram(startup_msg)
     
