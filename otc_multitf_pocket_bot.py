@@ -136,7 +136,7 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
     
     # Williams %R
-    df["williams_r"] = ta.momentum.WilliamsRIndicator(df["high"], df["low"], df["close"], window=14).williams_r()
+    df["williams_r"] = ta.momentum.WilliamsRIndicator(df["high"], df["low"], df["close"], lbp=14).williams_r()
     
     # CCI (Commodity Channel Index)
     df["cci"] = ta.trend.CCIIndicator(df["high"], df["low"], df["close"], window=20).cci()
