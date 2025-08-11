@@ -135,9 +135,6 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["bb_lower"] = bb.bollinger_lband()
     df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
     
-    # Williams %R
-    df["williams_r"] = ta.momentum.WilliamsRIndicator(df["high"], df["low"], df["close"], lbp=14).williams_r()
-    
     # CCI (Commodity Channel Index)
     df["cci"] = ta.trend.CCIIndicator(df["high"], df["low"], df["close"], window=20).cci()
     
@@ -365,14 +362,7 @@ def compute_score(pair: str, df_htf: pd.DataFrame, df_mtf: pd.DataFrame, df_ltf:
                 score -= 12
                 reasons.append("MTF: Price above BB upper (5m)")
         
-        # Williams %R
-        if pd.notna(last_mtf.get("williams_r")):
-            if last_mtf["williams_r"] < -80:
-                score += 10
-                reasons.append("MTF: Williams %R oversold (5m)")
-            elif last_mtf["williams_r"] > -20:
-                score -= 10
-                reasons.append("MTF: Williams %R overbought (5m)")
+        
         
         # CCI analysis
         if pd.notna(last_mtf.get("cci")):
@@ -700,8 +690,7 @@ async def pair_worker(pair: str):
                     if pd.notna(last_mtf.get("macd")):
                         txt += f"• MACD: {last_mtf['macd']:.6f}\n"
                     
-                    if pd.notna(last_mtf.get("williams_r")):
-                        txt += f"• Williams %R: {last_mtf['williams_r']:.1f}\n"
+                    
                     
                     if pd.notna(last_mtf.get("cci")):
                         txt += f"• CCI: {last_mtf['cci']:.1f}\n"

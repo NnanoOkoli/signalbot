@@ -68,7 +68,7 @@ BOLLINGER_STD = 2                 # Bollinger Bands standard deviation
 STOCHASTIC_K = 14                 # Stochastic %K period
 STOCHASTIC_D = 3                  # Stochastic %D period
 
-WILLIAMS_R_PERIOD = 14            # Williams %R period
+
 
 CCI_PERIOD = 20                   # Commodity Channel Index period
 
