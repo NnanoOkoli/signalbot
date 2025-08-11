@@ -828,72 +828,24 @@ async def pair_worker(pair: str):
             
             now = time.time()
             if side != "none" and (now - last_signal_ts[pair]) > SIGNAL_DEBOUNCE:
-                # Build comprehensive signal message
-                txt = f"🔔 <b>{pair}</b> SIGNAL: <b>{side.upper()}</b>\n"
+                # Build simple, visual signal message
+                current_time = pd.Timestamp.now().strftime('%H:%M:%S')
                 
-                # Check if this is a sniper entry
+                if side == "buy":
+                    # Green BUY signal with teddy bear
+                    txt = f"🟢 <b>BUY {pair}</b> 🧸\n"
+                    txt += f"⏰ {current_time}\n"
+                    txt += f"💰 {side.upper()}"
+                else:
+                    # Red SELL signal with teddy bear
+                    txt = f"🔴 <b>SELL {pair}</b> 🧸\n"
+                    txt += f"⏰ {current_time}\n"
+                    txt += f"💰 {side.upper()}"
+                
+                # Add sniper entry info if detected
                 is_sniper = sniper_side != "none" and sniper_side == side
                 if is_sniper:
-                    txt += f"🎯 <b>SNIPER ENTRY DETECTED!</b>\n"
-                    txt += f"💰 <b>Entry Price:</b> {sniper_price:.5f}\n"
-                
-                txt += f"📊 <b>Signal Score:</b> {score}/100\n"
-                txt += f"⏰ <b>Timeframes:</b> {HTF} + {MTF} + {LTF}"
-                if is_sniper:
-                    txt += f" + {SNIPER_TF}"
-                txt += f"\n\n"
-                
-                # Add current price and time
-                if not df_mtf.empty:
-                    current_price = df_mtf.iloc[-1]['close']
-                    txt += f"💰 <b>Current Price:</b> {current_price:.5f}\n"
-                    txt += f"🕐 <b>Signal Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')} UTC\n\n"
-                
-                # Add technical reasons
-                txt += f"📈 <b>Technical Analysis:</b>\n"
-                for i, r in enumerate(reasons[:8], 1):  # Limit to top 8 reasons
-                    txt += f"{i}. {r}\n"
-                
-                if len(reasons) > 8:
-                    txt += f"... and {len(reasons) - 8} more indicators\n"
-                
-                # Add current indicator values
-                if not df_mtf.empty:
-                    last_mtf = df_mtf.iloc[-1]
-                    txt += f"\n🔍 <b>Key Indicators ({MTF}):</b>\n"
-                    
-                    if pd.notna(last_mtf.get("rsi14")):
-                        txt += f"• RSI: {last_mtf['rsi14']:.1f}\n"
-                    
-                    if pd.notna(last_mtf.get("stoch_k")) and pd.notna(last_mtf.get("stoch_d")):
-                        txt += f"• Stochastic K/D: {last_mtf['stoch_k']:.1f}/{last_mtf['stoch_d']:.1f}\n"
-                    
-                    if pd.notna(last_mtf.get("macd")):
-                        txt += f"• MACD: {last_mtf['macd']:.6f}\n"
-                    
-                    
-                    
-                    if pd.notna(last_mtf.get("cci")):
-                        txt += f"• CCI: {last_mtf['cci']:.1f}\n"
-                
-                # Add trend information
-                if not df_htf.empty:
-                    last_htf = df_htf.iloc[-1]
-                    txt += f"\n📊 <b>Trend Analysis ({HTF}):</b>\n"
-                    
-                    if pd.notna(last_htf.get("ema20")) and pd.notna(last_htf.get("ema50")):
-                        ema20 = last_htf['ema20']
-                        ema50 = last_htf['ema50']
-                        if ema20 > ema50:
-                            txt += f"• Trend: Bullish (EMA20: {ema20:.5f} > EMA50: {ema50:.5f})\n"
-                        else:
-                            txt += f"• Trend: Bearish (EMA20: {ema20:.5f} < EMA50: {ema50:.5f})\n"
-                
-                # Add risk management info
-                txt += f"\n⚠️ <b>Risk Management:</b>\n"
-                txt += f"• Entry: {side.upper()} at current price\n"
-                txt += f"• Stop Loss: {side.upper()} {'below' if side == 'buy' else 'above'} recent swing\n"
-                txt += f"• Take Profit: 2:1 risk-reward ratio\n"
+                    txt += f" 🎯"
                 
                 await send_telegram(txt)
                 last_signal_ts[pair] = now
@@ -916,21 +868,10 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🚀 <b>OTC Signal Bot Started</b>
+🧸 <b>OTC Signal Bot Started</b> 🧸
 
-📊 <b>Multi-Timeframe Analysis:</b>
-• High TF: {HTF}
-• Medium TF: {MTF} 
-• Low TF: {LTF}
-• Sniper TF: {SNIPER_TF}
-
-🎯 <b>Sniper Entry System:</b>
-• Detecting precise 1-minute trade entries
-• Using 5-second candle analysis
-• Momentum, breakout, and SR bounce detection
-
-📈 <b>Pairs:</b> {', '.join(PAIRS)}
-⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+🎯 <b>Sniper Entry System Active</b>
+⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
     """
     
@@ -952,9 +893,9 @@ async def main():
     finally:
         # Send shutdown notification
         shutdown_msg = f"""
-🛑 <b>OTC Signal Bot Stopped</b>
+🧸 <b>OTC Signal Bot Stopped</b> 🧸
 
-⏰ <b>Stop Time:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}
+⏰ <b>Stop Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 ⚠️ <i>Bot is no longer monitoring for signals</i>
         """
         await send_telegram(shutdown_msg)
