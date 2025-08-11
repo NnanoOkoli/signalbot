@@ -98,13 +98,161 @@ async def send_telegram(text: str):
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, timeout=10) as resp:
-                if resp.status != 200:
-                    txt = await resp.text()
-                    logger.warning("Telegram send failed %s %s", resp.status, txt)
+                if resp.status == 200:
+                    logger.info(f"Telegram message sent successfully")
                 else:
-                    logger.info("Telegram message sent successfully")
+                    logger.error(f"Failed to send Telegram message: {resp.status}")
     except Exception as e:
-        logger.exception("Telegram error: %s", e)
+        logger.error(f"Error sending Telegram message: {e}")
+
+def detect_sniper_entries(df_5s: pd.DataFrame, df_1m: pd.DataFrame) -> Tuple[str, float, List[str]]:
+    """
+    Detect sniper entry points for 1-minute trades using 5-second candle analysis
+    
+    Returns:
+        - entry_type: "buy", "sell", or "none"
+        - entry_price: optimal entry price
+        - reasons: list of entry reasons
+    """
+    if df_5s.empty or df_1m.empty:
+        return "none", 0.0, []
+    
+    reasons = []
+    entry_type = "none"
+    entry_price = 0.0
+    
+    # Get recent 5-second candles (last 12 candles = 1 minute)
+    recent_5s = df_5s.tail(12)
+    if len(recent_5s) < 12:
+        return "none", 0.0, []
+    
+    # Get 1-minute trend context
+    last_1m = df_1m.iloc[-1]
+    prev_1m = df_1m.iloc[-2] if len(df_1m) > 1 else last_1m
+    
+    # 1-minute trend direction
+    trend_up = last_1m["close"] > prev_1m["close"]
+    trend_down = last_1m["close"] < prev_1m["close"]
+    
+    # Analyze 5-second momentum and structure
+    current_5s = recent_5s.iloc[-1]
+    prev_5s = recent_5s.iloc[-2] if len(recent_5s) > 1 else current_5s
+    
+    # Volume analysis (if available)
+    volume_increasing = False
+    if "volume" in current_5s and "volume" in prev_5s:
+        volume_increasing = current_5s["volume"] > prev_5s["volume"] * 1.2
+    
+    # Price momentum analysis
+    price_momentum_up = current_5s["close"] > current_5s["open"]
+    price_momentum_down = current_5s["close"] < current_5s["open"]
+    
+    # Wick analysis for rejection
+    upper_wick = current_5s["high"] - max(current_5s["open"], current_5s["close"])
+    lower_wick = min(current_5s["open"], current_5s["close"]) - current_5s["low"]
+    body_size = abs(current_5s["close"] - current_5s["open"])
+    
+    # Detect rejection patterns
+    upper_rejection = upper_wick > body_size * 1.5
+    lower_rejection = lower_wick > body_size * 1.5
+    
+    # Support/Resistance bounce detection
+    support_bounce = False
+    resistance_bounce = False
+    
+    if len(df_1m) >= 20:  # Need enough history for SR zones
+        # Simple support/resistance levels
+        recent_highs = df_1m["high"].tail(20).nlargest(3)
+        recent_lows = df_1m["low"].tail(20).nsmallest(3)
+        
+        # Check if price is bouncing off support
+        for low in recent_lows:
+            if abs(current_5s["low"] - low) < 0.0002:  # Within 2 pips
+                support_bounce = True
+                reasons.append(f"5s: Bouncing off support at {low:.5f}")
+                break
+        
+        # Check if price is bouncing off resistance
+        for high in recent_highs:
+            if abs(current_5s["high"] - high) < 0.0002:  # Within 2 pips
+                resistance_bounce = True
+                reasons.append(f"5s: Bouncing off resistance at {high:.5f}")
+                break
+    
+    # Momentum continuation patterns
+    momentum_continuation_up = False
+    momentum_continuation_down = False
+    
+    if len(recent_5s) >= 6:
+        # Check last 6 candles (30 seconds) for momentum
+        last_6 = recent_5s.tail(6)
+        consecutive_up = sum(1 for i in range(len(last_6)-1) if last_6.iloc[i+1]["close"] > last_6.iloc[i]["close"])
+        consecutive_down = sum(1 for i in range(len(last_6)-1) if last_6.iloc[i+1]["close"] < last_6.iloc[i]["close"])
+        
+        if consecutive_up >= 4:  # At least 4 out of 5 candles moving up
+            momentum_continuation_up = True
+            reasons.append("5s: Strong upward momentum (4+ consecutive up candles)")
+        
+        if consecutive_down >= 4:  # At least 4 out of 5 candles moving down
+            momentum_continuation_down = True
+            reasons.append("5s: Strong downward momentum (4+ consecutive down candles)")
+    
+    # Breakout detection on 5-second timeframe
+    breakout_up = False
+    breakout_down = False
+    
+    if len(recent_5s) >= 10:
+        # Calculate recent range
+        recent_range_high = recent_5s["high"].tail(10).max()
+        recent_range_low = recent_5s["low"].tail(10).min()
+        range_size = recent_range_high - recent_range_low
+        
+        # Check for breakout
+        if current_5s["close"] > recent_range_high and body_size > range_size * 0.3:
+            breakout_up = True
+            reasons.append("5s: Bullish breakout above recent range")
+        
+        if current_5s["close"] < recent_range_low and body_size > range_size * 0.3:
+            breakout_down = True
+            reasons.append("5s: Bearish breakout below recent range")
+    
+    # Entry logic
+    if trend_up and (momentum_continuation_up or breakout_up or support_bounce):
+        # Bullish entry conditions
+        if not upper_rejection:  # No strong upper rejection
+            entry_type = "buy"
+            entry_price = current_5s["close"]
+            
+            if momentum_continuation_up:
+                reasons.append("5s: Momentum continuation entry")
+            if breakout_up:
+                reasons.append("5s: Breakout entry")
+            if support_bounce:
+                reasons.append("5s: Support bounce entry")
+            if volume_increasing:
+                reasons.append("5s: Volume confirmation")
+    
+    elif trend_down and (momentum_continuation_down or breakout_down or resistance_bounce):
+        # Bearish entry conditions
+        if not lower_rejection:  # No strong lower rejection
+            entry_type = "sell"
+            entry_price = current_5s["close"]
+            
+            if momentum_continuation_down:
+                reasons.append("5s: Momentum continuation entry")
+            if breakout_down:
+                reasons.append("5s: Breakout entry")
+            if resistance_bounce:
+                reasons.append("5s: Resistance bounce entry")
+            if volume_increasing:
+                reasons.append("5s: Volume confirmation")
+    
+    # Add timeframe context
+    if entry_type != "none":
+        reasons.append(f"1m: Trend {'up' if trend_up else 'down'}")
+        reasons.append(f"5s: Entry at {entry_price:.5f}")
+    
+    return entry_type, entry_price, reasons
 
 # ========== Technical Analysis ==========
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -549,6 +697,17 @@ async def get_live_candles_stub(pair: str) -> List[Tuple[str, Candle]]:
     
     candles_out = []
     
+    # Create 5s candle (every 5 seconds)
+    c5 = Candle(
+        ts=now, 
+        open=price-0.00005, 
+        high=price+0.0001, 
+        low=price-0.0001, 
+        close=price, 
+        volume=50
+    )
+    candles_out.append(("5s", c5))
+    
     # Create 30s candle
     c30 = Candle(
         ts=now, 
@@ -653,14 +812,36 @@ async def pair_worker(pair: str):
             df_mtf = add_indicators(candles_to_df(buffers[pair][MTF]))
             df_ltf = add_indicators(candles_to_df(buffers[pair][LTF]))
             
+            # Get sniper entry signals using 5-second and 1-minute timeframes
+            df_5s = candles_to_df(buffers[pair].get("5s", deque()))
+            sniper_side, sniper_price, sniper_reasons = detect_sniper_entries(df_5s, df_ltf)
+            
+            # Combine traditional analysis with sniper entries
             side, reasons, score = compute_score(pair, df_htf, df_mtf, df_ltf)
+            
+            # Override with sniper entry if detected and traditional signal agrees
+            if sniper_side != "none" and sniper_side == side:
+                # Enhanced signal with sniper entry
+                side = sniper_side
+                reasons = sniper_reasons + reasons[:5]  # Combine sniper reasons with top traditional reasons
+                score = min(100, score + 15)  # Boost score for sniper entries
             
             now = time.time()
             if side != "none" and (now - last_signal_ts[pair]) > SIGNAL_DEBOUNCE:
                 # Build comprehensive signal message
                 txt = f"🔔 <b>{pair}</b> SIGNAL: <b>{side.upper()}</b>\n"
+                
+                # Check if this is a sniper entry
+                is_sniper = sniper_side != "none" and sniper_side == side
+                if is_sniper:
+                    txt += f"🎯 <b>SNIPER ENTRY DETECTED!</b>\n"
+                    txt += f"💰 <b>Entry Price:</b> {sniper_price:.5f}\n"
+                
                 txt += f"📊 <b>Signal Score:</b> {score}/100\n"
-                txt += f"⏰ <b>Timeframes:</b> {HTF} + {MTF} + {LTF}\n\n"
+                txt += f"⏰ <b>Timeframes:</b> {HTF} + {MTF} + {LTF}"
+                if is_sniper:
+                    txt += f" + {SNIPER_TF}"
+                txt += f"\n\n"
                 
                 # Add current price and time
                 if not df_mtf.empty:
@@ -741,6 +922,12 @@ async def main():
 • High TF: {HTF}
 • Medium TF: {MTF} 
 • Low TF: {LTF}
+• Sniper TF: {SNIPER_TF}
+
+🎯 <b>Sniper Entry System:</b>
+• Detecting precise 1-minute trade entries
+• Using 5-second candle analysis
+• Momentum, breakout, and SR bounce detection
 
 📈 <b>Pairs:</b> {', '.join(PAIRS)}
 ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}

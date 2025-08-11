@@ -36,6 +36,7 @@ PAIRS = [
 
 # Timeframe Definitions (in seconds)
 TF_DEFS = {
+    "5s": 5,        # 5 seconds - for sniper entries
     "30s": 30,      # 30 seconds
     "1m": 60,       # 1 minute
     "3m": 180,      # 3 minutes
@@ -47,6 +48,7 @@ TF_DEFS = {
 HTF = "15m"         # High Timeframe (trend direction)
 MTF = "5m"          # Medium Timeframe (main analysis)
 LTF = "1m"          # Low Timeframe (entry refinement)
+SNIPER_TF = "5s"    # Sniper Timeframe (precise entries)
 
 # Signal Settings
 CANDLES_N = 200                    # History length per timeframe
