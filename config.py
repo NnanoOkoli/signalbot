@@ -52,8 +52,17 @@ SNIPER_TF = "5s"    # Sniper Timeframe (precise entries)
 
 # Signal Settings
 CANDLES_N = 200                    # History length per timeframe
-POLL_INTERVAL = 0.5                # Seconds between polls (balanced speed)
-SIGNAL_DEBOUNCE = 120              # 2 minutes between same pair signals (faster than 5min, slower than 20s)
+POLL_INTERVAL = 2.0                # Seconds between polls (slower for quality)
+SIGNAL_DEBOUNCE = 600              # 10 minutes between same pair signals (quality over quantity)
+
+# Technical Indicator Parameters
+MIN_SIGNAL_SCORE = 90              # High threshold for 30-second entries (adjusted from 95)
+TREND_STRENGTH_THRESHOLD = 0.90    # Very strong trend requirement
+VOLATILITY_THRESHOLD = 0.005       # Higher volatility threshold for quick moves
+CONFIRMATION_CANDLES = 7           # More confirmation candles required
+MIN_VOLUME_RATIO = 2.5             # Higher volume confirmation
+TREND_ALIGNMENT_REQUIRED = True    # All timeframes must align
+ENTRY_TIMEFRAME = "30s"            # Focus on 30-second entry trades
 
 # Technical Indicator Parameters
 RSI_PERIOD = 14                    # RSI calculation period
@@ -84,13 +93,13 @@ ATR_LEN = 10                       # ATR length for volatility
 KC_MULT = 1.5                      # ATR multiplier for upper/lower bands
 
 # Signal Generation Thresholds
-MIN_SIGNAL_SCORE = 85              # High threshold for accuracy (was 50)
-TREND_STRENGTH_THRESHOLD = 0.8     # Strong trend required (was 0.4)
-VOLATILITY_THRESHOLD = 0.003       # Higher volatility required (was 0.001)
+MIN_SIGNAL_SCORE = 90              # Higher threshold for high-quality signals only
+TREND_STRENGTH_THRESHOLD = 0.85    # Stronger trend requirement
+VOLATILITY_THRESHOLD = 0.004       # Higher volatility threshold
 
 # High Accuracy Settings
-CONFIRMATION_CANDLES = 3           # Need 3 consecutive confirming candles
-MIN_VOLUME_RATIO = 1.5             # Volume must be 1.5x average
+CONFIRMATION_CANDLES = 5           # More confirmation candles required
+MIN_VOLUME_RATIO = 2.0             # Higher volume confirmation
 TREND_ALIGNMENT_REQUIRED = True    # All timeframes must align
 
 # ========== HOW TO SETUP ==========

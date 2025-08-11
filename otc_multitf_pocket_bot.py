@@ -98,20 +98,35 @@ def candles_to_df(candles: Deque[Candle]) -> pd.DataFrame:
     df = pd.DataFrame(arr).set_index(pd.to_datetime([c["ts"] for c in arr], unit="s"))
     return df
 
-async def send_telegram(text: str):
-    """Send message to Telegram"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"}
+async def send_telegram(message: str, max_retries: int = 3) -> bool:
+    """Send message to Telegram with retry logic"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML"
+    }
     
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=10) as resp:
-                if resp.status == 200:
-                    logger.info(f"Telegram message sent successfully")
-                else:
-                    logger.error(f"Failed to send Telegram message: {resp.status}")
-    except Exception as e:
-        logger.error(f"Error sending Telegram message: {e}")
+    for attempt in range(max_retries):
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=15) as resp:
+                    if resp.status == 200:
+                        logger.info("Telegram message sent successfully")
+                        return True
+                    else:
+                        logger.warning(f"Telegram API returned status {resp.status}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Telegram timeout on attempt {attempt + 1}/{max_retries}")
+        except Exception as e:
+            logger.warning(f"Telegram error on attempt {attempt + 1}/{max_retries}: {e}")
+        
+        # Wait before retry (exponential backoff)
+        if attempt < max_retries - 1:
+            await asyncio.sleep(2 ** attempt)
+    
+    logger.error(f"Failed to send Telegram message after {max_retries} attempts")
+    return False
 
 def detect_sniper_entries(df_5s: pd.DataFrame, df_1m: pd.DataFrame) -> Tuple[str, float, List[str]]:
     """
@@ -889,12 +904,12 @@ async def pair_worker(pair: str):
                 reasons = sniper_reasons + reasons[:5]  # Combine sniper reasons with top traditional reasons
                 score = min(100, score + 15)  # Boost score for sniper entries
             
-            # High-accuracy signal generation - quality over quantity
+            # High-quality 30-second entry signal generation only
             signals_to_send = []
             
-            # Only send main signal if it meets strict criteria
+            # Only send main signal if it meets very strict criteria for 30-second entries
             if side != "none":
-                # Additional confirmation checks for high accuracy
+                # Additional confirmation checks for high-quality 30-second entries
                 confirmation_passed = True
                 
                 # Check if all timeframes align (HTF, MTF, LTF)
@@ -906,45 +921,54 @@ async def pair_worker(pair: str):
                     if not (htf_trend == mtf_trend == ltf_trend):
                         confirmation_passed = False
                 
-                # Check for consecutive confirming candles
+                # Check for consecutive confirming candles (very strict for 30-second entries)
                 if confirmation_passed and len(df_mtf) >= CONFIRMATION_CANDLES:
                     recent_candles = df_mtf.tail(CONFIRMATION_CANDLES)
                     if side == "buy":
-                        if not all(c["close"] > c["open"] for c in recent_candles):
+                        # Must have at least 6 out of 7 bullish candles
+                        bullish_count = sum(1 for c in recent_candles if c["close"] > c["open"])
+                        if bullish_count < 6:
                             confirmation_passed = False
                     else:  # sell
-                        if not all(c["close"] < c["open"] for c in recent_candles):
+                        # Must have at least 6 out of 7 bearish candles
+                        bearish_count = sum(1 for c in recent_candles if c["close"] < c["open"])
+                        if bearish_count < 6:
                             confirmation_passed = False
                 
-                # Volume confirmation
+                # Volume confirmation (higher threshold for 30-second entries)
                 if confirmation_passed and "volume" in df_mtf.columns:
                     avg_volume = df_mtf["volume"].tail(20).mean()
                     current_volume = df_mtf.iloc[-1]["volume"]
                     if current_volume < avg_volume * MIN_VOLUME_RATIO:
                         confirmation_passed = False
                 
-                # Only add signal if all confirmations pass
-                if confirmation_passed:
-                    signals_to_send.append(("main", side, score, reasons))
+                # Only add signal if all confirmations pass AND score is high enough for 30-second entries
+                if confirmation_passed and score >= MIN_SIGNAL_SCORE:
+                    signals_to_send.append(("30s_entry", side, score, reasons))
             
-            # Sniper entry only if it's a strong confirmation of main signal
-            if sniper_side != "none" and sniper_side == side and score >= 90:
-                signals_to_send.append(("sniper", sniper_side, 95, sniper_reasons))
-            
-            # Quick momentum signals (faster frequency, lower threshold)
-            if not df_5s.empty and len(df_5s) >= 6:
-                current_5s = df_5s.iloc[-1]
-                prev_5s = df_5s.iloc[-2] if len(df_5s) > 1 else current_5s
+            # Sniper entry only if it's a very strong confirmation for 30-second trades
+            if sniper_side != "none" and sniper_side == side and score >= 93:
+                # Additional sniper confirmation checks for 30-second entries
+                sniper_confirmed = True
                 
-                # Quick momentum signal with lower threshold for more frequent alerts
-                if current_5s["close"] > prev_5s["close"] * 1.0002:  # 0.02% move (higher threshold)
-                    momentum_score = 75
-                    if momentum_score >= 70:  # Lower threshold for momentum signals
-                        signals_to_send.append(("momentum", "buy", momentum_score, ["5s: Quick momentum up (0.02%)"]))
-                elif current_5s["close"] < prev_5s["close"] * 0.9998:  # 0.02% move (higher threshold)
-                    momentum_score = -75
-                    if momentum_score <= -70:  # Lower threshold for momentum signals
-                        signals_to_send.append(("momentum", "sell", momentum_score, ["5s: Quick momentum down (0.02%)"]))
+                # Check if 5-second candles show extremely strong momentum for quick entry
+                if not df_5s.empty and len(df_5s) >= 15:
+                    recent_5s = df_5s.tail(15)
+                    if sniper_side == "buy":
+                        # Must have at least 12 out of 15 bullish candles
+                        bullish_count = sum(1 for c in recent_5s if c["close"] > c["open"])
+                        if bullish_count < 12:
+                            sniper_confirmed = False
+                    else:  # sell
+                        # Must have at least 12 out of 15 bearish candles
+                        bearish_count = sum(1 for c in recent_5s if c["close"] < c["open"])
+                        if bearish_count < 12:
+                            sniper_confirmed = False
+                
+                if sniper_confirmed:
+                    signals_to_send.append(("30s_sniper", sniper_side, 99, sniper_reasons))
+            
+            # REMOVED: All momentum signals - focusing only on high-quality 30-second entries
             
             now = time.time()
             
@@ -953,13 +977,13 @@ async def pair_worker(pair: str):
                 # Check if enough time has passed for this signal type
                 time_key = f"{pair}_{signal_type}"
                 
-                # Different debounce times for different signal types
-                if signal_type == "momentum":
-                    debounce_time = 60  # 1 minute for momentum signals (faster)
-                elif signal_type == "sniper":
-                    debounce_time = 180  # 3 minutes for sniper signals (medium)
-                else:  # main signal
-                    debounce_time = SIGNAL_DEBOUNCE  # 2 minutes for main signals
+                # Different debounce times for different 30-second entry signal types
+                if signal_type == "30s_entry":
+                    debounce_time = 600  # 10 minutes for 30-second entry signals
+                elif signal_type == "30s_sniper":
+                    debounce_time = 900  # 15 minutes for 30-second sniper signals
+                else:  # fallback
+                    debounce_time = SIGNAL_DEBOUNCE  # 10 minutes default
                 
                 if (now - last_signal_ts.get(time_key, 0)) > debounce_time:
                     
@@ -972,32 +996,59 @@ async def pair_worker(pair: str):
                     # Build consolidated signal message
                     risk_amount = current_balance * position_size
                     
-                    # Calculate trade time limit based on signal type
-                    if signal_type == "momentum":
-                        trade_time_limit = "1-2 min"
+                    # Calculate trade time limit based on signal type for 30-second entries
+                    if signal_type == "30s_entry":
+                        trade_time_limit = "30 seconds"
+                        trade_direction = "⚡↗️" if signal_side == "buy" else "⚡↘️"
+                    elif signal_type == "30s_sniper":
+                        trade_time_limit = "30 seconds"
+                        trade_direction = "🎯⚡↗️" if signal_side == "buy" else "🎯⚡↘️"
+                    else:  # fallback
+                        trade_time_limit = "30 seconds"
                         trade_direction = "↗️" if signal_side == "buy" else "↘️"
-                    elif signal_type == "sniper":
-                        trade_time_limit = "2-3 min"
-                        trade_direction = "🎯↗️" if signal_side == "buy" else "🎯↘️"
-                    else:  # main signal
-                        trade_time_limit = "3-5 min"
-                        trade_direction = "🚀↗️" if signal_side == "buy" else "🚀↘️"
-                        
+                    
                     if signal_side == "buy":
-                        # Consolidated BUY signal
-                        txt = f"🟢 <b>{pair}</b> {trade_direction}\n"
-                        txt += f"⏱️ {trade_time_limit} | 💰 ${risk_amount:.0f}\n"
-                        txt += f"🎯 {win_rate:.1%} | 📊 {signal_type.upper()}"
+                        # Green BUY signal with teddy bear and 30-second direction arrow
+                        txt = f"🟢 <b>BUY {pair}</b> 🧸 {trade_direction}\n"
+                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
+                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
                     else:
-                        # Consolidated SELL signal
-                        txt = f"🔴 <b>{pair}</b> {trade_direction}\n"
-                        txt += f"⏱️ {trade_time_limit} | 💰 ${risk_amount:.0f}\n"
-                        txt += f"🎯 {win_rate:.1%} | 📊 {signal_type.upper()}"
+                        # Red SELL signal with teddy bear and 30-second direction arrow
+                        txt = f"🔴 <b>SELL {pair}</b> 🧸 {trade_direction}\n"
+                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
+                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
                         
-                    await send_telegram(txt)
-                    last_signal_ts[time_key] = now
-                    logger.info("Sent %s signal %s %s (score=%d, win_rate=%.1f%%)", 
-                               signal_type, pair, signal_side, signal_score, win_rate * 100)
+                        # Add accuracy and risk management info
+                        txt += f"\n🎯 <b>Accuracy:</b> {win_rate:.1%}\n"
+                        txt += f"📊 <b>Position Size:</b> {position_size:.1%}\n"
+                        txt += f"📈 <b>Total Trades:</b> {total_trades} | <b>Wins:</b> {winning_trades}"
+                        
+                        # Add signal type indicators for 30-second entries
+                        if signal_type == "30s_sniper":
+                            txt += f" 🎯⚡"
+                        elif signal_type == "30s_entry":
+                            txt += f" ⚡"
+                        
+                        # Add visual trade summary box for 30-second entries
+                        txt += f"\n\n📋 <b>30-SECOND TRADE SUMMARY</b>"
+                        txt += f"\n{'─' * 25}"
+                        txt += f"\n🎯 <b>Type:</b> {signal_type.upper()} Signal"
+                        txt += f"\n📈 <b>Direction:</b> {trade_direction} {signal_side.upper()}"
+                        txt += f"\n⏱️ <b>Hold Time:</b> {trade_time_limit}"
+                        txt += f"\n💰 <b>Risk Amount:</b> ${risk_amount:.0f}"
+                        txt += f"\n🎲 <b>Win Rate:</b> {win_rate:.1%}"
+                        txt += f"\n⚡ <b>Quick Entry:</b> 30-second precision"
+                        
+                    # Send high-quality signal
+                    success = await send_telegram(txt)
+                    if success:
+                        last_signal_ts[time_key] = now
+                        logger.info("Sent %s signal %s %s (score=%d, win_rate=%.1f%%)", 
+                                   signal_type, pair, signal_side, signal_score, win_rate * 100)
+                    else:
+                        logger.warning("Failed to send %s signal for %s", signal_type, pair)
             
             await asyncio.sleep(POLL_INTERVAL)
             
@@ -1016,11 +1067,14 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🧸 <b>Consolidated High-Accuracy OTC Signal Bot Started</b> 🧸
+🧸 <b>30-Second High-Quality Entry Bot Started</b> ��
 
-🎯 <b>Target: 98%+ Win Rate</b>
-⚡ <b>Signal Format: Consolidated & Specific</b>
+🎯 <b>Target: 98% Win Rate - 30-Second Entries Only</b>
+⚡ <b>Signal Frequency: Quality Over Quantity (10min intervals)</b>
 📊 <b>Risk Management: Kelly Criterion Position Sizing</b>
+🔒 <b>Signal Types: 30s Entry (90+) & 30s Sniper (93+) Only</b>
+⏱️ <b>Trade Duration: 30 Seconds Maximum</b>
+🎯 <b>Score Threshold: 90+ for High-Quality Signals</b>
 ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
 """
