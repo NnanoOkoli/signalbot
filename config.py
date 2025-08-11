@@ -3,7 +3,7 @@
 
 # Telegram Bot Configuration
 TELEGRAM_TOKEN = "8252758490:AAE2u3DwM_xYqCXnkllKmxyw7k6_LI0zcoo"
-TELEGRAM_CHAT_ID = "YOUR_ACTUAL_CHAT_ID_HERE"  # Your user ID or group ID
+TELEGRAM_CHAT_ID = "6789225017"  # Your user ID or group ID
 
 # Pocket Option API Configuration
 POCKET_OPTION_EMAIL = "gripcake@gmail.com"  # Replace with your Pocket Option email
