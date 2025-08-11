@@ -100,9 +100,9 @@ def candles_to_df(candles: Deque[Candle]) -> pd.DataFrame:
 
 async def send_telegram(message: str, max_retries: int = 3) -> bool:
     """Send message to Telegram with retry logic"""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id": CHAT_ID,
+        "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
         "parse_mode": "HTML"
     }
@@ -947,7 +947,7 @@ async def pair_worker(pair: str):
                     signals_to_send.append(("30s_entry", side, score, reasons))
             
             # Sniper entry only if it's a very strong confirmation for 30-second trades
-            if sniper_side != "none" and sniper_side == side and score >= 93:
+            if sniper_side != "none" and sniper_side == side and score >= 99:  # Premium threshold for sniper
                 # Additional sniper confirmation checks for 30-second entries
                 sniper_confirmed = True
                 
@@ -999,49 +999,46 @@ async def pair_worker(pair: str):
                     # Calculate trade time limit based on signal type for 30-second entries
                     if signal_type == "30s_entry":
                         trade_time_limit = "30 seconds"
-                        trade_direction = "⚡↗️" if signal_side == "buy" else "⚡↘️"
+                        trade_direction = "🚀" if signal_side == "buy" else "📉"
                     elif signal_type == "30s_sniper":
                         trade_time_limit = "30 seconds"
-                        trade_direction = "🎯⚡↗️" if signal_side == "buy" else "🎯⚡↘️"
+                        trade_direction = "🎯🚀" if signal_side == "buy" else "🎯📉"
                     else:  # fallback
                         trade_time_limit = "30 seconds"
-                        trade_direction = "↗️" if signal_side == "buy" else "↘️"
-                    
+                        trade_direction = "🚀" if signal_side == "buy" else "📉"
+                        
                     if signal_side == "buy":
-                        # Green BUY signal with teddy bear and 30-second direction arrow
-                        txt = f"🟢 <b>BUY {pair}</b> 🧸 {trade_direction}\n"
-                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
-                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
-                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
+                        # Simple GREEN BUY signal with fun emojis
+                        txt = f"🟢 <b>BUY {pair}</b> {trade_direction}\n"
+                        txt += f"⏱️ <b>Hold:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Amount:</b> ${risk_amount:.0f}\n"
+                        txt += f"🎯 <b>Score:</b> {score}/100"
                     else:
-                        # Red SELL signal with teddy bear and 30-second direction arrow
-                        txt = f"🔴 <b>SELL {pair}</b> 🧸 {trade_direction}\n"
-                        txt += f"⏰ <b>Signal Time:</b> {current_time}\n"
-                        txt += f"⏱️ <b>Trade Time Limit:</b> {trade_time_limit}\n"
-                        txt += f"💰 <b>Trade Amount:</b> ${risk_amount:.0f}"
-                        
-                        # Add accuracy and risk management info
-                        txt += f"\n🎯 <b>Accuracy:</b> {win_rate:.1%}\n"
-                        txt += f"📊 <b>Position Size:</b> {position_size:.1%}\n"
-                        txt += f"📈 <b>Total Trades:</b> {total_trades} | <b>Wins:</b> {winning_trades}"
-                        
-                        # Add signal type indicators for 30-second entries
-                        if signal_type == "30s_sniper":
-                            txt += f" 🎯⚡"
-                        elif signal_type == "30s_entry":
-                            txt += f" ⚡"
-                        
-                        # Add visual trade summary box for 30-second entries
-                        txt += f"\n\n📋 <b>30-SECOND TRADE SUMMARY</b>"
-                        txt += f"\n{'─' * 25}"
-                        txt += f"\n🎯 <b>Type:</b> {signal_type.upper()} Signal"
-                        txt += f"\n📈 <b>Direction:</b> {trade_direction} {signal_side.upper()}"
-                        txt += f"\n⏱️ <b>Hold Time:</b> {trade_time_limit}"
-                        txt += f"\n💰 <b>Risk Amount:</b> ${risk_amount:.0f}"
-                        txt += f"\n🎲 <b>Win Rate:</b> {win_rate:.1%}"
-                        txt += f"\n⚡ <b>Quick Entry:</b> 30-second precision"
-                        
-                    # Send high-quality signal
+                        # Simple RED SELL signal with fun emojis
+                        txt = f"🔴 <b>SELL {pair}</b> {trade_direction}\n"
+                        txt += f"⏱️ <b>Hold:</b> {trade_time_limit}\n"
+                        txt += f"💰 <b>Amount:</b> ${risk_amount:.0f}\n"
+                        txt += f"🎯 <b>Score:</b> {score}/100"
+                    
+                    # Add simple win rate info
+                    txt += f"\n📊 <b>Win Rate:</b> {win_rate:.1%}"
+                    
+                    # Add signal type indicator
+                    if signal_type == "30s_sniper":
+                        txt += f" 🎯⚡"
+                    elif signal_type == "30s_entry":
+                        txt += f" ⚡"
+                    
+                    # Simple trade summary box
+                    txt += f"\n\n📋 <b>TRADE SUMMARY</b>"
+                    txt += f"\n{'─' * 20}"
+                    txt += f"\n🎯 <b>Type:</b> {signal_type.upper()}"
+                    txt += f"\n📈 <b>Direction:</b> {trade_direction} {signal_side.upper()}"
+                    txt += f"\n⏱️ <b>Time:</b> {trade_time_limit}"
+                    txt += f"\n💰 <b>Risk:</b> ${risk_amount:.0f}"
+                    txt += f"\n🎲 <b>Accuracy:</b> {win_rate:.1%}"
+                    
+                # Send high-quality signal
                     success = await send_telegram(txt)
                     if success:
                         last_signal_ts[time_key] = now
@@ -1067,17 +1064,17 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🧸 <b>30-Second High-Quality Entry Bot Started</b> ��
-
-🎯 <b>Target: 98% Win Rate - 30-Second Entries Only</b>
-⚡ <b>Signal Frequency: Quality Over Quantity (10min intervals)</b>
-📊 <b>Risk Management: Kelly Criterion Position Sizing</b>
-🔒 <b>Signal Types: 30s Entry (90+) & 30s Sniper (93+) Only</b>
-⏱️ <b>Trade Duration: 30 Seconds Maximum</b>
-🎯 <b>Score Threshold: 90+ for High-Quality Signals</b>
-⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
-🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
-"""
+    🎯 <b>Premium Slow & Steady Bot Started</b> 🎯
+    
+    🚀 <b>Target: 97+ Score - Only Premium Signals</b>
+    ⏰ <b>Signal Rate: 1-2 per hour (Super Slow & Premium)</b>
+    📊 <b>Quality: Ultra High Standards, Simple Messages</b>
+    🔒 <b>Signal Types: 30s Entry (97+) & 30s Sniper (99+) Only</b>
+    ⏱️ <b>Trade Duration: 30 Seconds Maximum</b>
+    🎯 <b>Score Threshold: 97+ for Premium Signals</b>
+    ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%I:%M:%S %p')}
+    🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
+    """
     
     await send_telegram(startup_msg)
     
@@ -1099,7 +1096,7 @@ async def main():
         shutdown_msg = f"""
 🧸 <b>OTC Signal Bot Stopped</b> 🧸
 
-⏰ <b>Stop Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
+⏰ <b>Stop Time:</b> {pd.Timestamp.now().strftime('%I:%M:%S %p')}
 ⚠️ <i>Bot is no longer monitoring for signals</i>
         """
         await send_telegram(shutdown_msg)

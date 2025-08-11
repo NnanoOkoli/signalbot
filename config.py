@@ -1,5 +1,4 @@
 # ========== MULTI-TIMEFRAME OTC SIGNAL BOT CONFIGURATION ==========
-# Copy this file to config.py and fill in your actual values
 
 # Telegram Bot Configuration
 TELEGRAM_TOKEN = "8252758490:AAE2u3DwM_xYqCXnkllKmxyw7k6_LI0zcoo"
@@ -52,15 +51,15 @@ SNIPER_TF = "5s"    # Sniper Timeframe (precise entries)
 
 # Signal Settings
 CANDLES_N = 200                    # History length per timeframe
-POLL_INTERVAL = 2.0                # Seconds between polls (slower for quality)
-SIGNAL_DEBOUNCE = 600              # 10 minutes between same pair signals (quality over quantity)
+POLL_INTERVAL = 45.0               # 45 seconds between polls (much slower for quality)
+SIGNAL_DEBOUNCE = 1800             # 30 minutes between same pair signals (much slower, higher quality)
 
 # Technical Indicator Parameters
-MIN_SIGNAL_SCORE = 90              # High threshold for 30-second entries (adjusted from 95)
-TREND_STRENGTH_THRESHOLD = 0.90    # Very strong trend requirement
-VOLATILITY_THRESHOLD = 0.005       # Higher volatility threshold for quick moves
-CONFIRMATION_CANDLES = 7           # More confirmation candles required
-MIN_VOLUME_RATIO = 2.5             # Higher volume confirmation
+MIN_SIGNAL_SCORE = 97              # Extremely high threshold for premium signals only
+TREND_STRENGTH_THRESHOLD = 0.97    # Extremely strong trend requirement
+VOLATILITY_THRESHOLD = 0.007       # Higher volatility threshold for premium moves
+CONFIRMATION_CANDLES = 9           # More confirmation candles required
+MIN_VOLUME_RATIO = 3.5             # Higher volume confirmation
 TREND_ALIGNMENT_REQUIRED = True    # All timeframes must align
 ENTRY_TIMEFRAME = "30s"            # Focus on 30-second entry trades
 
@@ -79,8 +78,6 @@ BOLLINGER_STD = 2                 # Bollinger Bands standard deviation
 STOCHASTIC_K = 14                 # Stochastic %K period
 STOCHASTIC_D = 3                  # Stochastic %D period
 
-
-
 CCI_PERIOD = 20                   # Commodity Channel Index period
 
 # Breakout Detection Parameters
@@ -91,36 +88,3 @@ BREAKOUT_BODY_RATIO = 0.35         # Minimum body % of candle range required
 EMA_LEN = 20                       # EMA length for center line
 ATR_LEN = 10                       # ATR length for volatility
 KC_MULT = 1.5                      # ATR multiplier for upper/lower bands
-
-# Signal Generation Thresholds
-MIN_SIGNAL_SCORE = 90              # Higher threshold for high-quality signals only
-TREND_STRENGTH_THRESHOLD = 0.85    # Stronger trend requirement
-VOLATILITY_THRESHOLD = 0.004       # Higher volatility threshold
-
-# High Accuracy Settings
-CONFIRMATION_CANDLES = 5           # More confirmation candles required
-MIN_VOLUME_RATIO = 2.0             # Higher volume confirmation
-TREND_ALIGNMENT_REQUIRED = True    # All timeframes must align
-
-# ========== HOW TO SETUP ==========
-# 1. Create a Telegram bot with @BotFather
-# 2. Get your bot token
-# 3. Get your chat ID (send a message to @userinfobot)
-# 4. Replace the placeholder values above
-# 5. Save as config.py
-# 6. Run: python otc_multitf_bot.py
-
-# ========== EXAMPLE VALUES ==========
-# TELEGRAM_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-# TELEGRAM_CHAT_ID = "123456789"
-# PAIRS = ["EURUSD-OTC", "GBPUSD-OTC", "USDJPY-OTC"]
-
-# ========== ADVANCED FEATURES ==========
-# This bot includes:
-# - Multi-timeframe analysis (30s, 1m, 3m, 5m)
-# - Fair Value Gap (FVG) detection
-# - Swing Support/Resistance zone clustering
-# - Breakout detection with body ratio validation
-# - Advanced scoring system combining multiple factors
-# - Asynchronous architecture for better performance
-# - Automatic FVG expiration and filling detection
