@@ -65,6 +65,14 @@ fvg_store: Dict[str, List[FVGap]] = defaultdict(list)
 sr_store: Dict[str, List[SRZone]] = defaultdict(list)
 last_signal_ts: Dict[str, float] = defaultdict(lambda: 0.0)
 
+# Signal accuracy tracking for risk management
+signal_history: Dict[str, List[Dict]] = defaultdict(list)
+account_balance = 1000  # Starting balance
+current_balance = 1000
+win_rate = 0.0
+total_trades = 0
+winning_trades = 0
+
 # ========== Pocket Option API instance ==========
 pocket_api = None
 
@@ -253,6 +261,61 @@ def detect_sniper_entries(df_5s: pd.DataFrame, df_1m: pd.DataFrame) -> Tuple[str
         reasons.append(f"5s: Entry at {entry_price:.5f}")
     
     return entry_type, entry_price, reasons
+
+def calculate_position_size(win_rate: float, account_balance: float, risk_per_trade: float = 0.02) -> float:
+    """
+    Calculate optimal position size based on win rate and Kelly Criterion
+    
+    Returns:
+        - position_size: Percentage of account to risk
+    """
+    if win_rate < 0.5:
+        # If win rate is below 50%, use very conservative sizing
+        return risk_per_trade * 0.5
+    
+    # Kelly Criterion: f = (bp - q) / b
+    # where: b = odds received, p = probability of win, q = probability of loss
+    if win_rate >= 0.98:
+        # 98%+ win rate: aggressive sizing
+        kelly_fraction = (win_rate * 2 - 1) * 0.5  # Conservative Kelly
+        return min(kelly_fraction, 0.05)  # Max 5% per trade
+    elif win_rate >= 0.9:
+        # 90%+ win rate: moderate sizing
+        return min((win_rate * 2 - 1) * 0.3, 0.03)  # Max 3% per trade
+    else:
+        # Below 90%: conservative sizing
+        return risk_per_trade * 0.5
+
+def update_win_rate(pair: str, signal_type: str, signal_side: str, entry_price: float, 
+                    current_price: float, timestamp: float):
+    """Update win rate based on signal outcome"""
+    global win_rate, total_trades, winning_trades, current_balance
+    
+    # Calculate if signal was profitable (simplified)
+    if signal_side == "buy":
+        profitable = current_price > entry_price * 1.001  # 0.1% profit
+    else:  # sell
+        profitable = current_price < entry_price * 0.999  # 0.1% profit
+    
+    # Update statistics
+    total_trades += 1
+    if profitable:
+        winning_trades += 1
+    
+    win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
+    
+    # Log signal outcome
+    signal_history[pair].append({
+        "type": signal_type,
+        "side": signal_side,
+        "entry_price": entry_price,
+        "current_price": current_price,
+        "profitable": profitable,
+        "timestamp": timestamp,
+        "win_rate": win_rate
+    })
+    
+    logger.info(f"Signal outcome: {pair} {signal_side} - {'WIN' if profitable else 'LOSS'} - Win Rate: {win_rate:.2%}")
 
 # ========== Technical Analysis ==========
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
@@ -589,10 +652,10 @@ def compute_score(pair: str, df_htf: pd.DataFrame, df_mtf: pd.DataFrame, df_ltf:
             score += 5
             reasons.append("Volatility: High volatility favorable")
     
-    # Determine signal direction (lower thresholds for more frequent signals)
-    if score >= 50:
+    # Determine signal direction (high thresholds for accuracy)
+    if score >= 85:
         signal = "buy"
-    elif score <= -50:
+    elif score <= -85:
         signal = "sell"
     else:
         signal = "none"
@@ -826,31 +889,47 @@ async def pair_worker(pair: str):
                 reasons = sniper_reasons + reasons[:5]  # Combine sniper reasons with top traditional reasons
                 score = min(100, score + 15)  # Boost score for sniper entries
             
-            # High-frequency signal generation - allow multiple signal types
+            # High-accuracy signal generation - quality over quantity
             signals_to_send = []
             
-            # Main signal
+            # Only send main signal if it meets strict criteria
             if side != "none":
-                signals_to_send.append(("main", side, score, reasons))
-            
-            # Sniper entry signal (if different from main)
-            if sniper_side != "none" and sniper_side != side:
-                signals_to_send.append(("sniper", sniper_side, 85, sniper_reasons))
-            
-            # Momentum signal (quick entry/exit)
-            if not df_5s.empty and len(df_5s) >= 6:
-                current_5s = df_5s.iloc[-1]
-                prev_5s = df_5s.iloc[-2] if len(df_5s) > 1 else current_5s
+                # Additional confirmation checks for high accuracy
+                confirmation_passed = True
                 
-                # Quick momentum signal
-                if current_5s["close"] > prev_5s["close"] * 1.0001:  # 0.01% move
-                    momentum_score = 60
-                    if momentum_score >= 50:
-                        signals_to_send.append(("momentum", "buy", momentum_score, ["5s: Quick momentum up"]))
-                elif current_5s["close"] < prev_5s["close"] * 0.9999:  # 0.01% move
-                    momentum_score = -60
-                    if momentum_score <= -50:
-                        signals_to_send.append(("momentum", "sell", momentum_score, ["5s: Quick momentum down"]))
+                # Check if all timeframes align (HTF, MTF, LTF)
+                if TREND_ALIGNMENT_REQUIRED:
+                    htf_trend = "up" if df_htf.iloc[-1]["close"] > df_htf.iloc[-1]["ema20"] else "down"
+                    mtf_trend = "up" if df_mtf.iloc[-1]["close"] > df_mtf.iloc[-1]["ema20"] else "down"
+                    ltf_trend = "up" if df_ltf.iloc[-1]["close"] > df_ltf.iloc[-1]["ema20"] else "down"
+                    
+                    if not (htf_trend == mtf_trend == ltf_trend):
+                        confirmation_passed = False
+                
+                # Check for consecutive confirming candles
+                if confirmation_passed and len(df_mtf) >= CONFIRMATION_CANDLES:
+                    recent_candles = df_mtf.tail(CONFIRMATION_CANDLES)
+                    if side == "buy":
+                        if not all(c["close"] > c["open"] for c in recent_candles):
+                            confirmation_passed = False
+                    else:  # sell
+                        if not all(c["close"] < c["open"] for c in recent_candles):
+                            confirmation_passed = False
+                
+                # Volume confirmation
+                if confirmation_passed and "volume" in df_mtf.columns:
+                    avg_volume = df_mtf["volume"].tail(20).mean()
+                    current_volume = df_mtf.iloc[-1]["volume"]
+                    if current_volume < avg_volume * MIN_VOLUME_RATIO:
+                        confirmation_passed = False
+                
+                # Only add signal if all confirmations pass
+                if confirmation_passed:
+                    signals_to_send.append(("main", side, score, reasons))
+            
+            # Sniper entry only if it's a strong confirmation of main signal
+            if sniper_side != "none" and sniper_side == side and score >= 90:
+                signals_to_send.append(("sniper", sniper_side, 95, sniper_reasons))
             
             now = time.time()
             
@@ -860,8 +939,12 @@ async def pair_worker(pair: str):
                 time_key = f"{pair}_{signal_type}"
                 if (now - last_signal_ts.get(time_key, 0)) > SIGNAL_DEBOUNCE:
                     
-                    # Build simple, visual signal message
+                    # Build high-accuracy signal message with risk management
                     current_time = pd.Timestamp.now().strftime('%H:%M:%S')
+                    
+                    # Calculate position size based on win rate
+                    position_size = calculate_position_size(win_rate, current_balance)
+                    risk_amount = current_balance * position_size
                     
                     if signal_side == "buy":
                         # Green BUY signal with teddy bear
@@ -874,15 +957,19 @@ async def pair_worker(pair: str):
                         txt += f"⏰ {current_time}\n"
                         txt += f"💰 {signal_side.upper()}"
                     
+                    # Add accuracy and risk management info
+                    txt += f"\n🎯 <b>Accuracy:</b> {win_rate:.1%}\n"
+                    txt += f"📊 <b>Position Size:</b> {position_size:.1%} (${risk_amount:.0f})\n"
+                    txt += f"📈 <b>Total Trades:</b> {total_trades} | <b>Wins:</b> {winning_trades}"
+                    
                     # Add signal type indicators
                     if signal_type == "sniper":
                         txt += f" 🎯"
-                    elif signal_type == "momentum":
-                        txt += f" ⚡"
                     
                     await send_telegram(txt)
                     last_signal_ts[time_key] = now
-                    logger.info("Sent %s signal %s %s (score=%d)", signal_type, pair, signal_side, signal_score)
+                    logger.info("Sent %s signal %s %s (score=%d, win_rate=%.1f%%)", 
+                               signal_type, pair, signal_side, signal_score, win_rate * 100)
             
             await asyncio.sleep(POLL_INTERVAL)
             
@@ -901,9 +988,11 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-🧸 <b>OTC Signal Bot Started</b> 🧸
+🧸 <b>High-Accuracy OTC Signal Bot Started</b> 🧸
 
-🎯 <b>Sniper Entry System Active</b>
+🎯 <b>Target: 98%+ Win Rate</b>
+⚡ <b>Signal Frequency: Quality over Quantity</b>
+📊 <b>Risk Management: Kelly Criterion Position Sizing</b>
 ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')}
 🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
     """
