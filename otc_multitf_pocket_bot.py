@@ -108,7 +108,7 @@ async def send_telegram(text: str):
 
 # ========== Technical Analysis ==========
 def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """Add technical indicators to DataFrame"""
+    """Add comprehensive technical indicators to DataFrame"""
     if df.empty or len(df) < max(EMA_LEN, ATR_LEN, 14):
         return df
     
@@ -122,11 +122,43 @@ def add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     df["stoch_k"] = stoch.stoch()
     df["stoch_d"] = stoch.stoch_signal()
     
+    # MACD
+    macd = ta.trend.MACD(df["close"], window_fast=12, window_slow=26, window_sign=9)
+    df["macd"] = macd.macd()
+    df["macd_signal"] = macd.macd_signal()
+    df["macd_histogram"] = macd.macd_diff()
+    
+    # Bollinger Bands
+    bb = ta.volatility.BollingerBands(df["close"], window=20, window_dev=2)
+    df["bb_upper"] = bb.bollinger_hband()
+    df["bb_middle"] = bb.bollinger_mavg()
+    df["bb_lower"] = bb.bollinger_lband()
+    df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"]
+    
+    # Williams %R
+    df["williams_r"] = ta.momentum.WilliamsRIndicator(df["high"], df["low"], df["close"], window=14).williams_r()
+    
+    # CCI (Commodity Channel Index)
+    df["cci"] = ta.trend.CCIIndicator(df["high"], df["low"], df["close"], window=20).cci()
+    
     # Keltner Channels
     df["ema20"] = ta.trend.EMAIndicator(df["close"], window=EMA_LEN).ema_indicator()
     df["atr10"] = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], window=ATR_LEN).average_true_range()
     df["keltner_upper"] = df["ema20"] + KC_MULT * df["atr10"]
     df["keltner_lower"] = df["ema20"] - KC_MULT * df["atr10"]
+    
+    # Additional EMAs for trend analysis
+    df["ema50"] = ta.trend.EMAIndicator(df["close"], window=50).ema_indicator()
+    df["ema200"] = ta.trend.EMAIndicator(df["close"], window=200).ema_indicator()
+    
+    # Price position relative to EMAs
+    df["price_vs_ema20"] = (df["close"] - df["ema20"]) / df["ema20"]
+    df["price_vs_ema50"] = (df["close"] - df["ema50"]) / df["ema50"]
+    df["ema20_vs_ema50"] = (df["ema20"] - df["ema50"]) / df["ema50"]
+    
+    # Volume indicators (if volume data available)
+    if "volume" in df.columns and df["volume"].sum() > 0:
+        df["volume_sma"] = ta.volume.VolumeWeightedAveragePrice(df["high"], df["low"], df["close"], df["volume"]).volume_weighted_average_price()
     
     return df
 
@@ -255,91 +287,179 @@ def is_breakout(df: pd.DataFrame, direction: str, range_bars=HTF_RANGE_BARS) -> 
     return False
 
 def compute_score(pair: str, df_htf: pd.DataFrame, df_mtf: pd.DataFrame, df_ltf: pd.DataFrame) -> Tuple[str, List[str], int]:
-    """Compute signal score based on multiple timeframes"""
+    """Compute comprehensive signal score based on multiple timeframes and indicators"""
     if df_htf.empty or df_mtf.empty or df_ltf.empty:
         return "none", [], 0
     
     reasons = []
     score = 0
     
-    # HTF trend analysis
+    # HTF trend analysis (15m timeframe)
     if not df_htf.empty:
         last_htf = df_htf.iloc[-1]
+        
+        # RSI analysis
         if pd.notna(last_htf.get("rsi14")):
             if last_htf["rsi14"] < 30:
-                score += 20
-                reasons.append("HTF: RSI oversold")
+                score += 25
+                reasons.append("HTF: RSI oversold (15m)")
             elif last_htf["rsi14"] > 70:
+                score -= 25
+                reasons.append("HTF: RSI overbought (15m)")
+        
+        # EMA trend analysis
+        if pd.notna(last_htf.get("ema20")) and pd.notna(last_htf.get("ema50")):
+            if last_htf["close"] > last_htf["ema20"] > last_htf["ema50"]:
+                score += 20
+                reasons.append("HTF: Strong uptrend (15m)")
+            elif last_htf["close"] < last_htf["ema20"] < last_htf["ema50"]:
                 score -= 20
-                reasons.append("HTF: RSI overbought")
+                reasons.append("HTF: Strong downtrend (15m)")
+        
+        # MACD trend confirmation
+        if pd.notna(last_htf.get("macd")) and pd.notna(last_htf.get("macd_signal")):
+            if last_htf["macd"] > last_htf["macd_signal"] and last_htf["macd"] > 0:
+                score += 15
+                reasons.append("HTF: MACD bullish (15m)")
+            elif last_htf["macd"] < last_htf["macd_signal"] and last_htf["macd"] < 0:
+                score -= 15
+                reasons.append("HTF: MACD bearish (15m)")
     
-    # MTF signal analysis
+    # MTF signal analysis (5m timeframe)
     if not df_mtf.empty:
         last_mtf = df_mtf.iloc[-1]
         
         # RSI conditions
         if pd.notna(last_mtf.get("rsi14")):
             if last_mtf["rsi14"] < 30:
-                score += 15
-                reasons.append("MTF: RSI oversold")
+                score += 20
+                reasons.append("MTF: RSI oversold (5m)")
             elif last_mtf["rsi14"] > 70:
-                score -= 15
-                reasons.append("MTF: RSI overbought")
+                score -= 20
+                reasons.append("MTF: RSI overbought (5m)")
         
         # Stochastic conditions
         if pd.notna(last_mtf.get("stoch_k")) and pd.notna(last_mtf.get("stoch_d")):
             if last_mtf["stoch_k"] < 20 and last_mtf["stoch_k"] < last_mtf["stoch_d"]:
-                score += 10
-                reasons.append("MTF: Stochastic oversold")
+                score += 15
+                reasons.append("MTF: Stochastic oversold (5m)")
             elif last_mtf["stoch_k"] > 80 and last_mtf["stoch_k"] > last_mtf["stoch_d"]:
+                score -= 15
+                reasons.append("MTF: Stochastic overbought (5m)")
+        
+        # MACD momentum
+        if pd.notna(last_mtf.get("macd_histogram")):
+            if last_mtf["macd_histogram"] > 0 and last_mtf["macd_histogram"] > df_mtf.iloc[-2].get("macd_histogram", 0):
+                score += 10
+                reasons.append("MTF: MACD momentum increasing (5m)")
+            elif last_mtf["macd_histogram"] < 0 and last_mtf["macd_histogram"] < df_mtf.iloc[-2].get("macd_histogram", 0):
                 score -= 10
-                reasons.append("MTF: Stochastic overbought")
+                reasons.append("MTF: MACD momentum decreasing (5m)")
+        
+        # Bollinger Bands analysis
+        if pd.notna(last_mtf.get("bb_lower")) and pd.notna(last_mtf.get("bb_upper")):
+            if last_mtf["close"] < last_mtf["bb_lower"]:
+                score += 12
+                reasons.append("MTF: Price below BB lower (5m)")
+            elif last_mtf["close"] > last_mtf["bb_upper"]:
+                score -= 12
+                reasons.append("MTF: Price above BB upper (5m)")
+        
+        # Williams %R
+        if pd.notna(last_mtf.get("williams_r")):
+            if last_mtf["williams_r"] < -80:
+                score += 10
+                reasons.append("MTF: Williams %R oversold (5m)")
+            elif last_mtf["williams_r"] > -20:
+                score -= 10
+                reasons.append("MTF: Williams %R overbought (5m)")
+        
+        # CCI analysis
+        if pd.notna(last_mtf.get("cci")):
+            if last_mtf["cci"] < -100:
+                score += 8
+                reasons.append("MTF: CCI oversold (5m)")
+            elif last_mtf["cci"] > 100:
+                score -= 8
+                reasons.append("MTF: CCI overbought (5m)")
         
         # Keltner Channel conditions
         if pd.notna(last_mtf.get("keltner_lower")) and pd.notna(last_mtf.get("keltner_upper")):
             if last_mtf["close"] < last_mtf["keltner_lower"]:
                 score += 10
-                reasons.append("MTF: Price below Keltner lower")
+                reasons.append("MTF: Price below Keltner lower (5m)")
             elif last_mtf["close"] > last_mtf["keltner_upper"]:
                 score -= 10
-                reasons.append("MTF: Price above Keltner upper")
+                reasons.append("MTF: Price above Keltner upper (5m)")
     
-    # LTF refinement
+    # LTF refinement (1m timeframe)
     if not df_ltf.empty:
         last_ltf = df_ltf.iloc[-1]
+        
+        # RSI conditions
         if pd.notna(last_ltf.get("rsi14")):
             if last_ltf["rsi14"] < 40:
-                score += 5
-                reasons.append("LTF: RSI supportive")
+                score += 8
+                reasons.append("LTF: RSI supportive (1m)")
             elif last_ltf["rsi14"] > 60:
+                score -= 8
+                reasons.append("LTF: RSI resistive (1m)")
+        
+        # Quick momentum check
+        if pd.notna(last_ltf.get("macd")):
+            if last_ltf["macd"] > df_ltf.iloc[-2].get("macd", 0):
+                score += 5
+                reasons.append("LTF: Quick momentum up (1m)")
+            elif last_ltf["macd"] < df_ltf.iloc[-2].get("macd", 0):
                 score -= 5
-                reasons.append("LTF: RSI resistive")
+                reasons.append("LTF: Quick momentum down (1m)")
     
     # FVG analysis
     for gap in fvg_store[pair]:
         if not gap.filled:
             if gap.side == "bull" and df_mtf.iloc[-1]["close"] < gap.bottom:
-                score += 8
-                reasons.append("FVG: Bullish gap above")
+                score += 12
+                reasons.append("FVG: Bullish gap above current price")
             elif gap.side == "bear" and df_mtf.iloc[-1]["close"] > gap.top:
-                score -= 8
-                reasons.append("FVG: Bearish gap below")
+                score += 12
+                reasons.append("FVG: Bearish gap below current price")
     
-    # Breakout analysis
+    # Support/Resistance analysis
+    current_price = df_mtf.iloc[-1]["close"]
+    for zone in sr_store[pair]:
+        if zone.low <= current_price <= zone.high:
+            if zone.strength >= 3:  # Strong zone
+                if current_price < (zone.low + zone.high) / 2:  # Near support
+                    score += 8
+                    reasons.append(f"SR: Strong support zone (strength: {zone.strength})")
+                else:  # Near resistance
+                    score -= 8
+                    reasons.append(f"SR: Strong resistance zone (strength: {zone.strength})")
+    
+    # Breakout detection
     if is_breakout(df_mtf, "up"):
-        score += 12
-        reasons.append("Breakout: Upward breakout detected")
+        score += 15
+        reasons.append("Breakout: Bullish breakout detected")
     elif is_breakout(df_mtf, "down"):
-        score -= 12
-        reasons.append("Breakout: Downward breakout detected")
+        score += 15
+        reasons.append("Breakout: Bearish breakout detected")
     
-    # Determine signal side
-    if score >= 25:
-        return "buy", reasons, score
-    elif score <= -25:
-        return "sell", reasons, score
+    # Volatility check
+    if pd.notna(last_mtf.get("atr10")):
+        avg_atr = df_mtf["atr10"].tail(10).mean()
+        if last_mtf["atr10"] > avg_atr * 1.2:  # High volatility
+            score += 5
+            reasons.append("Volatility: High volatility favorable")
+    
+    # Determine signal direction
+    if score >= 80:
+        signal = "buy"
+    elif score <= -80:
+        signal = "sell"
     else:
-        return "none", reasons, score
+        signal = "none"
+    
+    return signal, reasons, score
 
 # ========== Pocket Option Integration ==========
 async def initialize_pocket_api():
@@ -422,30 +542,81 @@ async def get_live_candles(pair: str) -> List[Tuple[str, Candle]]:
         return await get_live_candles_stub(pair)
 
 async def get_live_candles_stub(pair: str) -> List[Tuple[str, Candle]]:
-    """Fallback stub data generator"""
+    """Fallback stub data generator with realistic price movements"""
     now = time.time()
-    base = 1.1000 + 0.001 * math.sin(now / 37.0 + hash(pair) % 10)
-    jitter = (np.random.randn() * 0.0002)
-    price = base + jitter
+    
+    # Create more realistic price movements based on pair characteristics
+    pair_seed = hash(pair) % 1000
+    base_price = 1.1000 + 0.001 * math.sin(now / 37.0 + pair_seed)
+    
+    # Add realistic volatility and trends
+    trend = 0.0001 * math.sin(now / 120.0 + pair_seed)  # 2-minute trend cycle
+    volatility = 0.0003 + 0.0002 * abs(math.sin(now / 60.0))  # Variable volatility
+    
+    # Generate random price movement
+    jitter = np.random.randn() * volatility
+    price = base_price + trend + jitter
     
     candles_out = []
     
     # Create 30s candle
-    c30 = Candle(ts=now, open=price-0.0001, high=price+0.0002, low=price-0.0002, close=price, volume=100)
+    c30 = Candle(
+        ts=now, 
+        open=price-0.0001, 
+        high=price+0.0002, 
+        low=price-0.0002, 
+        close=price, 
+        volume=100
+    )
     candles_out.append(("30s", c30))
     
-    # Aggregate to higher timeframes
+    # Create 1m candle (every minute)
     if int(now) % 60 < 2:
-        c1 = Candle(ts=now, open=price-0.0003, high=price+0.0004, low=price-0.0004, close=price, volume=240)
+        c1 = Candle(
+            ts=now, 
+            open=price-0.0003, 
+            high=price+0.0004, 
+            low=price-0.0004, 
+            close=price, 
+            volume=240
+        )
         candles_out.append(("1m", c1))
     
+    # Create 3m candle (every 3 minutes)
     if int(now) % 180 < 3:
-        c3 = Candle(ts=now, open=price-0.0005, high=price+0.0008, low=price-0.0007, close=price, volume=600)
+        c3 = Candle(
+            ts=now, 
+            open=price-0.0005, 
+            high=price+0.0008, 
+            low=price-0.0007, 
+            close=price, 
+            volume=600
+        )
         candles_out.append(("3m", c3))
     
+    # Create 5m candle (every 5 minutes)
     if int(now) % 300 < 3:
-        c5 = Candle(ts=now, open=price-0.0009, high=price+0.0012, low=price-0.0011, close=price, volume=1200)
+        c5 = Candle(
+            ts=now, 
+            open=price-0.0009, 
+            high=price+0.0012, 
+            low=price-0.0011, 
+            close=price, 
+            volume=1200
+        )
         candles_out.append(("5m", c5))
+    
+    # Create 15m candle (every 15 minutes)
+    if int(now) % 900 < 3:
+        c15 = Candle(
+            ts=now, 
+            open=price-0.0015, 
+            high=price+0.0020, 
+            low=price-0.0018, 
+            close=price, 
+            volume=3600
+        )
+        candles_out.append(("15m", c15))
     
     return candles_out
 
@@ -496,21 +667,67 @@ async def pair_worker(pair: str):
             
             now = time.time()
             if side != "none" and (now - last_signal_ts[pair]) > SIGNAL_DEBOUNCE:
-                # Build signal message
+                # Build comprehensive signal message
                 txt = f"🔔 <b>{pair}</b> SIGNAL: <b>{side.upper()}</b>\n"
-                txt += f"Score: {score}\n"
-                txt += f"Timeframe: {HTF} + {MTF} + {LTF}\n\n"
+                txt += f"📊 <b>Signal Score:</b> {score}/100\n"
+                txt += f"⏰ <b>Timeframes:</b> {HTF} + {MTF} + {LTF}\n\n"
                 
-                for r in reasons:
-                    txt += f"• {r}\n"
-                
+                # Add current price and time
                 if not df_mtf.empty:
-                    txt += f"\n💰 Price: {df_mtf.iloc[-1]['close']:.5f}"
-                    txt += f"\n⏰ Time: {df_mtf.index[-1].strftime('%H:%M:%S')} UTC"
+                    current_price = df_mtf.iloc[-1]['close']
+                    txt += f"💰 <b>Current Price:</b> {current_price:.5f}\n"
+                    txt += f"🕐 <b>Signal Time:</b> {pd.Timestamp.now().strftime('%H:%M:%S')} UTC\n\n"
+                
+                # Add technical reasons
+                txt += f"📈 <b>Technical Analysis:</b>\n"
+                for i, r in enumerate(reasons[:8], 1):  # Limit to top 8 reasons
+                    txt += f"{i}. {r}\n"
+                
+                if len(reasons) > 8:
+                    txt += f"... and {len(reasons) - 8} more indicators\n"
+                
+                # Add current indicator values
+                if not df_mtf.empty:
+                    last_mtf = df_mtf.iloc[-1]
+                    txt += f"\n🔍 <b>Key Indicators ({MTF}):</b>\n"
+                    
+                    if pd.notna(last_mtf.get("rsi14")):
+                        txt += f"• RSI: {last_mtf['rsi14']:.1f}\n"
+                    
+                    if pd.notna(last_mtf.get("stoch_k")) and pd.notna(last_mtf.get("stoch_d")):
+                        txt += f"• Stochastic K/D: {last_mtf['stoch_k']:.1f}/{last_mtf['stoch_d']:.1f}\n"
+                    
+                    if pd.notna(last_mtf.get("macd")):
+                        txt += f"• MACD: {last_mtf['macd']:.6f}\n"
+                    
+                    if pd.notna(last_mtf.get("williams_r")):
+                        txt += f"• Williams %R: {last_mtf['williams_r']:.1f}\n"
+                    
+                    if pd.notna(last_mtf.get("cci")):
+                        txt += f"• CCI: {last_mtf['cci']:.1f}\n"
+                
+                # Add trend information
+                if not df_htf.empty:
+                    last_htf = df_htf.iloc[-1]
+                    txt += f"\n📊 <b>Trend Analysis ({HTF}):</b>\n"
+                    
+                    if pd.notna(last_htf.get("ema20")) and pd.notna(last_htf.get("ema50")):
+                        ema20 = last_htf['ema20']
+                        ema50 = last_htf['ema50']
+                        if ema20 > ema50:
+                            txt += f"• Trend: Bullish (EMA20: {ema20:.5f} > EMA50: {ema50:.5f})\n"
+                        else:
+                            txt += f"• Trend: Bearish (EMA20: {ema20:.5f} < EMA50: {ema50:.5f})\n"
+                
+                # Add risk management info
+                txt += f"\n⚠️ <b>Risk Management:</b>\n"
+                txt += f"• Entry: {side.upper()} at current price\n"
+                txt += f"• Stop Loss: {side.upper()} {'below' if side == 'buy' else 'above'} recent swing\n"
+                txt += f"• Take Profit: 2:1 risk-reward ratio\n"
                 
                 await send_telegram(txt)
                 last_signal_ts[pair] = now
-                logger.info("Sent signal %s %s (score=%d)", pair, side, score)
+                logger.info("Sent comprehensive signal %s %s (score=%d)", pair, side, score)
             
             await asyncio.sleep(POLL_INTERVAL)
             
