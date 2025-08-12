@@ -52,8 +52,8 @@ POLL_INTERVAL = 45.0               # 45 seconds between polls (much slower for q
 SIGNAL_DEBOUNCE = 1800             # 30 minutes between same pair signals (much slower, higher quality)
 
 # Technical Indicator Parameters
-MIN_SIGNAL_SCORE = 97              # Extremely high threshold for premium signals only
-TREND_STRENGTH_THRESHOLD = 0.97    # Extremely strong trend requirement
+MIN_SIGNAL_SCORE = 85              # Reduced threshold for more signals (was 97)
+TREND_STRENGTH_THRESHOLD = 0.85    # Reduced threshold for more signals (was 0.97)
 VOLATILITY_THRESHOLD = 0.007       # Higher volatility threshold for premium moves
 CONFIRMATION_CANDLES = 9           # More confirmation candles required
 MIN_VOLUME_RATIO = 3.5             # Higher volume confirmation

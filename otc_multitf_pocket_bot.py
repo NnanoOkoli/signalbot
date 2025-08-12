@@ -959,7 +959,7 @@ async def pair_worker(pair: str):
                     buffers[pair][tf].append(candle)
                     
                     # Add indicators when we have enough data
-                    if len(buffers[pair][tf]) >= 50:
+                    if len(buffers[pair][tf]) >= 20:  # Reduced from 50 to 20 for faster response
                         df = candles_to_df(buffers[pair][tf])
                         df = add_indicators(df)
                         
@@ -968,7 +968,7 @@ async def pair_worker(pair: str):
                             update_fvg_store(pair, tf, df)
                         
                         # Detect SR zones
-                        if len(df) >= 50:
+                        if len(df) >= 20:  # Reduced from 50 to 20
                             cluster_sr_zones(pair, df)
             
             # Expire FVGs using latest price
@@ -1017,18 +1017,18 @@ async def pair_worker(pair: str):
                     if not (htf_trend == mtf_trend == ltf_trend):
                         confirmation_passed = False
                 
-                # Check for consecutive confirming candles (very strict for 30-second entries)
-                if confirmation_passed and len(df_mtf) >= CONFIRMATION_CANDLES:
-                    recent_candles = df_mtf.tail(CONFIRMATION_CANDLES)
+                # Check for consecutive confirming candles (relaxed for faster signals)
+                if confirmation_passed and len(df_mtf) >= 5:  # Reduced from CONFIRMATION_CANDLES to 5
+                    recent_candles = df_mtf.tail(5)
                     if side == "buy":
-                        # Must have at least 6 out of 7 bullish candles
+                        # Must have at least 3 out of 5 bullish candles (relaxed from 6/7)
                         bullish_count = sum(1 for c in recent_candles if c["close"] > c["open"])
-                        if bullish_count < 6:
+                        if bullish_count < 3:
                             confirmation_passed = False
                     else:  # sell
-                        # Must have at least 6 out of 7 bearish candles
+                        # Must have at least 3 out of 5 bearish candles (relaxed from 6/7)
                         bearish_count = sum(1 for c in recent_candles if c["close"] < c["open"])
-                        if bearish_count < 6:
+                        if bearish_count < 3:
                             confirmation_passed = False
                 
                 # Volume confirmation (higher threshold for 30-second entries)
@@ -1069,18 +1069,18 @@ async def pair_worker(pair: str):
                 # Additional sniper confirmation checks for 30-second entries
                 sniper_confirmed = True
                 
-                # Check if 5-second candles show extremely strong momentum for quick entry
-                if not df_5s.empty and len(df_5s) >= 15:
-                    recent_5s = df_5s.tail(15)
+                # Check if 5-second candles show strong momentum for quick entry
+                if not df_5s.empty and len(df_5s) >= 10:  # Reduced from 15 to 10
+                    recent_5s = df_5s.tail(10)
                     if sniper_side == "buy":
-                        # Must have at least 12 out of 15 bullish candles
+                        # Must have at least 7 out of 10 bullish candles (relaxed from 12/15)
                         bullish_count = sum(1 for c in recent_5s if c["close"] > c["open"])
-                        if bullish_count < 12:
+                        if bullish_count < 7:
                             sniper_confirmed = False
                     else:  # sell
-                        # Must have at least 12 out of 15 bearish candles
+                        # Must have at least 7 out of 10 bearish candles (relaxed from 12/15)
                         bearish_count = sum(1 for c in recent_5s if c["close"] < c["open"])
-                        if bearish_count < 12:
+                        if bearish_count < 7:
                             sniper_confirmed = False
                 
                 if sniper_confirmed:
