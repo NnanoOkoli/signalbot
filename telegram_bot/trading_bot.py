@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from pocket_option_api import PocketOptionAPI
-from config import BOT_TOKEN, POCKET_OPTION_EMAIL, POCKET_OPTION_PASSWORD, POCKET_OPTION_DEMO
+from .config import BOT_TOKEN, POCKET_OPTION_EMAIL, POCKET_OPTION_PASSWORD, POCKET_OPTION_DEMO
 
 # Configure logging
 logging.basicConfig(

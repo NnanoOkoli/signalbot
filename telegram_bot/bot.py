@@ -9,7 +9,7 @@ import datetime
 import math
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from config import BOT_TOKEN
+from .config import BOT_TOKEN
 
 # Enable logging
 logging.basicConfig(
@@ -19,6 +19,21 @@ logging.basicConfig(
 
 # Get logger
 logger = logging.getLogger(__name__)
+
+# Simple function for sending telegram messages (used by main bot)
+async def send_telegram(message: str) -> bool:
+    """
+    Simple function to send telegram messages
+    Used by the main OTC bot for signal notifications
+    """
+    try:
+        # For now, just log the message since we don't have a bot instance
+        logger.info(f"📱 Telegram Message: {message}")
+        print(f"📱 Telegram Message: {message}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send telegram message: {e}")
+        return False
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""

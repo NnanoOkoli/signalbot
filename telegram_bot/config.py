@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Bot Configuration
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+BOT_TOKEN = "8252758490:AAE2u3DwM_xYqCXnkllKmxyw7k6_LI0zcoo"  # Direct token for immediate use
 
 # Validate bot token
 if not BOT_TOKEN:
@@ -19,9 +19,9 @@ if not BOT_TOKEN:
     )
 
 # Pocket Option API Configuration
-POCKET_OPTION_EMAIL = os.getenv('POCKET_OPTION_EMAIL')
-POCKET_OPTION_PASSWORD = os.getenv('POCKET_OPTION_PASSWORD')
-POCKET_OPTION_DEMO = os.getenv('POCKET_OPTION_DEMO', 'true').lower() == 'true'
+POCKET_OPTION_EMAIL = "wheresaldog@gmail.com"  # From main config
+POCKET_OPTION_PASSWORD = "Franklin5"           # From main config
+POCKET_OPTION_DEMO = True                      # Demo mode for safety
 
 # Validate Pocket Option credentials
 if not POCKET_OPTION_EMAIL or not POCKET_OPTION_PASSWORD:

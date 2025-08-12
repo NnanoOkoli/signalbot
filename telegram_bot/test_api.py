@@ -92,7 +92,7 @@ def test_config_loading():
     print("\n🧪 Testing Configuration Loading...")
     
     try:
-        from config import (
+        from .config import (
             BOT_TOKEN, POCKET_OPTION_EMAIL, POCKET_OPTION_PASSWORD, 
             POCKET_OPTION_DEMO, TRADING_SETTINGS
         )

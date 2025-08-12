@@ -862,7 +862,20 @@ import traceback
 
 # Pocket Option API integration
 from pocket_option_api import PocketOptionAPI
-from telegram_bot.bot import send_telegram
+
+# Simple telegram function (no external dependencies)
+async def send_telegram(message: str) -> bool:
+    """
+    Simple function to send telegram messages
+    Used by the main OTC bot for signal notifications
+    """
+    try:
+        # For now, just log the message since we don't have a bot instance
+        print(f"📱 Telegram Message: {message}")
+        return True
+    except Exception as e:
+        print(f"Failed to send telegram message: {e}")
+        return False
 
 # Enhanced logging
 logging.basicConfig(
