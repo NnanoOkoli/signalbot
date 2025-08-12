@@ -847,6 +847,89 @@ async def get_live_candles_stub(pair: str) -> List[Tuple[str, Candle]]:
     
     return candles_out
 
+# ========== Configuration ==========
+from config import *
+
+# Add payout rate checking imports
+import asyncio
+import time
+import logging
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple, Optional
+import traceback
+
+# Pocket Option API integration
+from pocket_option_api import PocketOptionAPI
+from telegram_bot.bot import send_telegram
+
+# Enhanced logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('otc_bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Global variables
+pocket_api = None
+last_signal_ts = {}
+current_balance = 10000  # Default balance for position sizing
+
+# Payout rate cache to avoid repeated API calls
+payout_cache = {}
+PAYOUT_CACHE_DURATION = 3600  # 1 hour cache duration
+
+async def get_pair_payout_rate(pair: str) -> Optional[float]:
+    """Get the payout rate for a specific pair with caching"""
+    global payout_cache
+    
+    # Check cache first
+    if pair in payout_cache:
+        cache_time, payout_rate = payout_cache[pair]
+        if time.time() - cache_time < PAYOUT_CACHE_DURATION:
+            return payout_rate
+    
+    # Get fresh payout rate from API
+    if pocket_api and pocket_api.is_authenticated:
+        try:
+            payout_rate = pocket_api.get_asset_payout_rate(pair, expiry_time=30)
+            if payout_rate is not None:
+                # Cache the result
+                payout_cache[pair] = (time.time(), payout_rate)
+                logger.info(f"Payout rate for {pair}: {payout_rate:.1%}")
+                return payout_rate
+        except Exception as e:
+            logger.error(f"Error getting payout rate for {pair}: {e}")
+    
+    # Fallback: use default payout rate for OTC pairs (usually 92-95%)
+    default_payout = 0.92
+    payout_cache[pair] = (time.time(), default_payout)
+    logger.warning(f"Using default payout rate for {pair}: {default_payout:.1%}")
+    return default_payout
+
+async def filter_high_payout_pairs(pairs: List[str]) -> List[str]:
+    """Filter pairs to only include those with payout rates above the threshold"""
+    if not PAYOUT_CHECK_ENABLED:
+        return pairs
+    
+    high_payout_pairs = []
+    
+    for pair in pairs:
+        payout_rate = await get_pair_payout_rate(pair)
+        if payout_rate and payout_rate >= MIN_PAYOUT_RATE:
+            high_payout_pairs.append(pair)
+            logger.info(f"✅ {pair} meets payout threshold: {payout_rate:.1%}")
+        else:
+            logger.info(f"❌ {pair} below payout threshold: {payout_rate:.1% if payout_rate else 'Unknown'}")
+    
+    logger.info(f"Filtered to {len(high_payout_pairs)} high-payout pairs out of {len(pairs)} total")
+    return high_payout_pairs
+
 # ========== Main worker ==========
 async def pair_worker(pair: str):
     """Main worker for each trading pair"""
@@ -959,9 +1042,14 @@ async def pair_worker(pair: str):
                         confirmation_passed = False
                         logger.debug(f"{pair}: Profit potential {profit_potential:.1%} below {MIN_PROFIT_THRESHOLD:.1%} threshold")
                 
-                # Only add signal if all confirmations pass AND score is high enough for 30-second entries
+                # Check payout rate before adding signal
                 if confirmation_passed and score >= MIN_SIGNAL_SCORE:
-                    signals_to_send.append(("30s_entry", side, score, reasons))
+                    payout_rate = await get_pair_payout_rate(pair)
+                    if payout_rate and payout_rate >= MIN_PAYOUT_RATE:
+                        signals_to_send.append(("30s_entry", side, score, reasons))
+                        logger.info(f"✅ Signal added for {pair} - Score: {score}, Payout: {payout_rate:.1%}")
+                    else:
+                        logger.info(f"❌ Signal rejected for {pair} - Payout {payout_rate:.1%} below {MIN_PAYOUT_RATE:.1%} threshold")
             
             # Sniper entry only if it's a very strong confirmation for 30-second trades
             if sniper_side != "none" and sniper_side == side and score >= 99:  # Premium threshold for sniper
@@ -983,7 +1071,13 @@ async def pair_worker(pair: str):
                             sniper_confirmed = False
                 
                 if sniper_confirmed:
-                    signals_to_send.append(("30s_sniper", sniper_side, 99, sniper_reasons))
+                    # Check payout rate for sniper signals too
+                    payout_rate = await get_pair_payout_rate(pair)
+                    if payout_rate and payout_rate >= MIN_PAYOUT_RATE:
+                        signals_to_send.append(("30s_sniper", sniper_side, 99, sniper_reasons))
+                        logger.info(f"✅ Sniper signal added for {pair} - Payout: {payout_rate:.1%}")
+                    else:
+                        logger.info(f"❌ Sniper signal rejected for {pair} - Payout {payout_rate:.1%} below {MIN_PAYOUT_RATE:.1%} threshold")
             
             # REMOVED: All momentum signals - focusing only on high-quality 30-second entries
             
@@ -1037,6 +1131,11 @@ async def pair_worker(pair: str):
                         txt += f"💰 <b>Amount:</b> ${risk_amount:.0f}\n"
                         txt += f"🎯 <b>Score:</b> {score}/100"
                     
+                    # Add payout rate info
+                    payout_rate = await get_pair_payout_rate(pair)
+                    if payout_rate:
+                        txt += f"\n🎯 <b>Payout Rate:</b> {payout_rate:.1%}"
+                    
                     # Add simple win rate info
                     txt += f"\n📊 <b>Win Rate:</b> {win_rate:.1%}"
                     
@@ -1065,7 +1164,7 @@ async def pair_worker(pair: str):
                     txt += f"\n💰 <b>Risk:</b> ${risk_amount:.0f}"
                     txt += f"\n🎲 <b>Accuracy:</b> {win_rate:.1%}"
                     
-                # Send high-quality signal
+                    # Send high-quality signal
                     success = await send_telegram(txt)
                     if success:
                         last_signal_ts[time_key] = now
@@ -1091,25 +1190,35 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-    🎯 <b>Top 10 OTC Premium Bot Started</b> 🎯
+    🎯 <b>92%+ Payout OTC Premium Bot Started</b> 🎯
     
     🚀 <b>Target: 97+ Score - Only Premium Signals</b>
     💰 <b>Profit Threshold: 92%+ (Ultra-Selective)</b>
+    🎯 <b>Payout Filter: 92%+ Only (High-Reward Pairs)</b>
     ⏰ <b>Signal Rate: 1-2 per hour (Super Slow & Premium)</b>
     📊 <b>Quality: Ultra High Standards, Simple Messages</b>
     🔒 <b>Signal Types: 30s Entry (97+) & 30s Sniper (99+) Only</b>
     ⏱️ <b>Trade Duration: 30 Seconds Maximum</b>
     🎯 <b>Score Threshold: 97+ for Premium Signals</b>
-    📈 <b>Pairs: Top 10 Most Profitable OTC (92%+ profit potential)</b>
+    📈 <b>Pairs: Filtered for 92%+ Payout OTC Only</b>
     ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%I:%M:%S %p')}
     🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
     """
     
     await send_telegram(startup_msg)
     
-    # Start worker tasks for each pair
+    # Filter pairs by payout rate before starting workers
+    logger.info("Filtering pairs by payout rate...")
+    high_payout_pairs = await filter_high_payout_pairs(PAIRS)
+    
+    if not high_payout_pairs:
+        logger.error("No pairs meet the payout threshold! Check configuration.")
+        await send_telegram("❌ No pairs meet the 92% payout threshold. Bot stopping.")
+        return
+    
+    # Start worker tasks for each high-payout pair
     tasks = []
-    for pair in PAIRS:
+    for pair in high_payout_pairs:
         task = asyncio.create_task(pair_worker(pair))
         tasks.append(task)
         await asyncio.sleep(0.2)

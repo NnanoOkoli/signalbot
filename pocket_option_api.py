@@ -188,6 +188,100 @@ class PocketOptionAPI:
             self.logger.error(f"Error getting assets: {str(e)}")
             return []
     
+    def get_asset_info(self, asset: str) -> Optional[Dict]:
+        """Get detailed information about a specific asset including payout rates"""
+        try:
+            if not self.is_authenticated:
+                return None
+            
+            response = self.session.get(f"{self.base_url}/api/assets/{asset}")
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    asset_info = data.get('data', {})
+                    return asset_info
+                else:
+                    self.logger.error(f"Failed to get asset info: {data.get('message')}")
+                    return None
+            else:
+                self.logger.error(f"Asset info request failed with status {response.status_code}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error getting asset info: {str(e)}")
+            return None
+    
+    def get_asset_payout_rate(self, asset: str, expiry_time: int = 30) -> Optional[float]:
+        """Get the payout rate for a specific asset and expiry time"""
+        try:
+            if not self.is_authenticated:
+                return None
+            
+            # Try to get payout rate from asset info
+            asset_info = self.get_asset_info(asset)
+            if asset_info and 'payout' in asset_info:
+                return float(asset_info['payout'])
+            
+            # Fallback: try to get payout from trade preview
+            trade_preview_data = {
+                "asset": asset,
+                "expiry_time": expiry_time * 60,  # Convert to seconds
+                "user_id": self.user_id
+            }
+            
+            response = self.session.post(f"{self.base_url}/api/trade/preview", json=trade_preview_data)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    preview_data = data.get('data', {})
+                    if 'payout' in preview_data:
+                        return float(preview_data['payout'])
+            
+            # If we can't get actual payout, return None
+            return None
+                
+        except Exception as e:
+            self.logger.error(f"Error getting asset payout rate: {str(e)}")
+            return None
+    
+    def get_high_payout_assets(self, min_payout: float = 0.92) -> List[Dict]:
+        """Get list of assets with payout rates above the minimum threshold"""
+        try:
+            if not self.is_authenticated:
+                return []
+            
+            high_payout_assets = []
+            
+            # Get all available assets
+            response = self.session.get(f"{self.base_url}/api/assets")
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('success'):
+                    assets = data.get('data', [])
+                    
+                    for asset in assets:
+                        if asset.get('active'):
+                            asset_name = asset.get('name')
+                            # Try to get payout rate
+                            payout_rate = self.get_asset_payout_rate(asset_name)
+                            
+                            if payout_rate and payout_rate >= min_payout:
+                                high_payout_assets.append({
+                                    'name': asset_name,
+                                    'payout': payout_rate,
+                                    'active': asset.get('active', False)
+                                })
+                                self.logger.info(f"High payout asset found: {asset_name} - {payout_rate:.1%}")
+            
+            # Sort by payout rate (highest first)
+            high_payout_assets.sort(key=lambda x: x['payout'], reverse=True)
+            
+            return high_payout_assets
+                
+        except Exception as e:
+            self.logger.error(f"Error getting high payout assets: {str(e)}")
+            return []
+    
     def place_trade(self, asset: str, direction: str, amount: float, 
                    expiry_time: int = None) -> Optional[Dict]:
         """Place a binary option trade"""

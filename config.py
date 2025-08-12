@@ -5,7 +5,7 @@ TELEGRAM_TOKEN = "8252758490:AAE2u3DwM_xYqCXnkllKmxyw7k6_LI0zcoo"
 TELEGRAM_CHAT_ID = "6789225017"  # Your user ID or group ID
 
 # Pocket Option API Configuration
-POCKET_OPTION_EMAIL = "gripcake@gmail.com"  # Replace with your Pocket Option email
+POCKET_OPTION_EMAIL = "wheresaldog@gmail.com"  # Replace with your Pocket Option email
 POCKET_OPTION_PASSWORD = "Franklin5"        # Replace with your Pocket Option password
 POCKET_OPTION_DEMO = True                       # Set to False for real account
 
@@ -25,6 +25,10 @@ PAIRS = [
 
 # Profit Threshold for Signal Generation
 MIN_PROFIT_THRESHOLD = 0.92    # Only generate signals for pairs with 92%+ profit potential
+
+# Payout Rate Threshold - Only trade pairs with 92%+ payout
+MIN_PAYOUT_RATE = 0.92         # Minimum payout rate required (92%)
+PAYOUT_CHECK_ENABLED = True    # Enable/disable payout rate checking
 
 # Timeframe Definitions (in seconds)
 TF_DEFS = {
