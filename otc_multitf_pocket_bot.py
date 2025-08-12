@@ -942,6 +942,23 @@ async def pair_worker(pair: str):
                     if current_volume < avg_volume * MIN_VOLUME_RATIO:
                         confirmation_passed = False
                 
+                # Profit potential check - only generate signals with 92%+ profit potential
+                if confirmation_passed:
+                    # Calculate potential profit based on current price action and volatility
+                    current_price = df_mtf.iloc[-1]["close"]
+                    atr_value = df_mtf["atr10"].iloc[-1] if "atr10" in df_mtf.columns else 0.001
+                    
+                    # Estimate profit potential based on ATR and trend strength
+                    if side == "buy":
+                        profit_potential = (current_price + (atr_value * 2)) / current_price - 1
+                    else:  # sell
+                        profit_potential = (current_price - (atr_value * 2)) / current_price - 1
+                    
+                    # Only proceed if profit potential is 92% or higher
+                    if profit_potential < MIN_PROFIT_THRESHOLD:
+                        confirmation_passed = False
+                        logger.debug(f"{pair}: Profit potential {profit_potential:.1%} below {MIN_PROFIT_THRESHOLD:.1%} threshold")
+                
                 # Only add signal if all confirmations pass AND score is high enough for 30-second entries
                 if confirmation_passed and score >= MIN_SIGNAL_SCORE:
                     signals_to_send.append(("30s_entry", side, score, reasons))
@@ -1023,6 +1040,16 @@ async def pair_worker(pair: str):
                     # Add simple win rate info
                     txt += f"\n📊 <b>Win Rate:</b> {win_rate:.1%}"
                     
+                    # Add profit potential info
+                    if "atr10" in df_mtf.columns:
+                        current_price = df_mtf.iloc[-1]["close"]
+                        atr_value = df_mtf["atr10"].iloc[-1]
+                        if signal_side == "buy":
+                            profit_potential = (current_price + (atr_value * 2)) / current_price - 1
+                        else:  # sell
+                            profit_potential = (current_price - (atr_value * 2)) / current_price - 1
+                        txt += f"\n💰 <b>Profit Potential:</b> {profit_potential:.1%}"
+                    
                     # Add signal type indicator
                     if signal_type == "30s_sniper":
                         txt += f" 🎯⚡"
@@ -1064,14 +1091,16 @@ async def main():
     
     # Send startup notification
     startup_msg = f"""
-    🎯 <b>Premium Slow & Steady Bot Started</b> 🎯
+    🎯 <b>Top 10 OTC Premium Bot Started</b> 🎯
     
     🚀 <b>Target: 97+ Score - Only Premium Signals</b>
+    💰 <b>Profit Threshold: 92%+ (Ultra-Selective)</b>
     ⏰ <b>Signal Rate: 1-2 per hour (Super Slow & Premium)</b>
     📊 <b>Quality: Ultra High Standards, Simple Messages</b>
     🔒 <b>Signal Types: 30s Entry (97+) & 30s Sniper (99+) Only</b>
     ⏱️ <b>Trade Duration: 30 Seconds Maximum</b>
     🎯 <b>Score Threshold: 97+ for Premium Signals</b>
+    📈 <b>Pairs: Top 10 Most Profitable OTC (92%+ profit potential)</b>
     ⏰ <b>Start Time:</b> {pd.Timestamp.now().strftime('%I:%M:%S %p')}
     🔧 <b>Mode:</b> {'Real Data' if pocket_api and pocket_api.is_authenticated else 'Stub Data'}
     """

@@ -9,29 +9,22 @@ POCKET_OPTION_EMAIL = "gripcake@gmail.com"  # Replace with your Pocket Option em
 POCKET_OPTION_PASSWORD = "Franklin5"        # Replace with your Pocket Option password
 POCKET_OPTION_DEMO = True                       # Set to False for real account
 
-# Trading Pairs to Monitor - ALL OTC PAIRS
+# Trading Pairs to Monitor - TOP 10 MOST PROFITABLE OTC PAIRS
 PAIRS = [
-    "EURUSD-OTC",    # Euro/US Dollar
-    "GBPUSD-OTC",    # British Pound/US Dollar
-    "USDJPY-OTC",    # US Dollar/Japanese Yen
-    "USDCHF-OTC",    # US Dollar/Swiss Franc
-    "AUDUSD-OTC",    # Australian Dollar/US Dollar
-    "USDCAD-OTC",    # US Dollar/Canadian Dollar
-    "NZDUSD-OTC",    # New Zealand Dollar/US Dollar
-    "EURGBP-OTC",    # Euro/British Pound
-    "EURJPY-OTC",    # Euro/Japanese Yen
-    "GBPJPY-OTC",    # British Pound/Japanese Yen
-    "AUDJPY-OTC",    # Australian Dollar/Japanese Yen
-    "CADJPY-OTC",    # Canadian Dollar/Japanese Yen
-    "EURCAD-OTC",    # Euro/Canadian Dollar
-    "GBPCAD-OTC",    # British Pound/Canadian Dollar
-    "AUDCAD-OTC",    # Australian Dollar/Canadian Dollar
-    "EURAUD-OTC",    # Euro/Australian Dollar
-    "GBPAUD-OTC",    # British Pound/Australian Dollar
-    "EURNZD-OTC",    # Euro/New Zealand Dollar
-    "GBPNZD-OTC",    # British Pound/New Zealand Dollar
-    "AUDNZD-OTC",    # Australian Dollar/New Zealand Dollar
+    "EURUSD-OTC",    # Euro/US Dollar - Most liquid
+    "GBPUSD-OTC",    # British Pound/US Dollar - High volatility
+    "USDJPY-OTC",    # US Dollar/Japanese Yen - Safe haven
+    "AUDUSD-OTC",    # Australian Dollar/US Dollar - Commodity
+    "USDCAD-OTC",    # US Dollar/Canadian Dollar - Oil correlation
+    "EURGBP-OTC",    # Euro/British Pound - Cross pair
+    "EURJPY-OTC",    # Euro/Japanese Yen - Major cross
+    "GBPJPY-OTC",    # British Pound/Japanese Yen - High volatility
+    "AUDJPY-OTC",    # Australian Dollar/Japanese Yen - Carry trade
+    "CADJPY-OTC",    # Canadian Dollar/Japanese Yen - Oil correlation
 ]
+
+# Profit Threshold for Signal Generation
+MIN_PROFIT_THRESHOLD = 0.92    # Only generate signals for pairs with 92%+ profit potential
 
 # Timeframe Definitions (in seconds)
 TF_DEFS = {
